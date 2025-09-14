@@ -165,7 +165,7 @@ function cleanYouTubeUrl(originalUrl) {
 
 // Fetches subtitles from the Gemini API
 async function fetchSubtitlesFromGemini(videoUrl, apiKey, tabId) {
-  const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro-exp-03-25:generateContent?key=${apiKey}`;
+  const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
 
   console.log(
     "Background Script: URL being embedded in Gemini prompt:",

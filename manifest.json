@@ -4,7 +4,7 @@
   "version": "1.0",
   "description": "Generate subtitles for YouTube videos using Gemini AI",
   "permissions": ["activeTab", "storage", "scripting"],
-  "host_permissions": ["https://*.youtube.com/*"],
+  "host_permissions": ["https://*.youtube.com/*", "*://*.googleapis.com/*"],
   "action": {
     "default_popup": "popup.html",
     "default_icon": {
