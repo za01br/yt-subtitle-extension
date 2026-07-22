@@ -1,0 +1,2031 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SHOOTY — FPS Coin Hunt</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; background: #0a0a12; font-family: "Segoe UI", system-ui, sans-serif; }
+  #app { position: fixed; inset: 0; }
+
+  /* HUD */
+  #hud {
+    position: fixed; inset: 0; pointer-events: none; color: #fff;
+    text-shadow: 0 2px 6px rgba(0,0,0,.8);
+  }
+  .stat {
+    position: absolute; padding: 8px 14px; border-radius: 10px;
+    background: rgba(0,0,0,.35); backdrop-filter: blur(4px);
+    font-weight: 700; letter-spacing: .5px; font-size: 20px;
+    border: 1px solid rgba(255,255,255,.08);
+  }
+  #coins { top: 18px; left: 18px; color: #ffd34d; }
+  #coins .ico {
+    display: inline-grid; place-items: center; width: 24px; height: 24px;
+    border-radius: 50%; background: radial-gradient(circle at 35% 30%, #ffe98a, #f5b800 60%, #c98a00);
+    color: #8a5a00; font-weight: 900; font-size: 15px; margin-right: 8px;
+    vertical-align: -5px; box-shadow: inset 0 0 0 2px #ffe98a, 0 0 8px #ffcc33;
+  }
+  #timer { top: 18px; left: 50%; transform: translateX(-50%); font-size: 30px; color: #fff; }
+  #timer.low { color: #ff5b5b; animation: pulse .6s infinite; }
+  @keyframes pulse { 50% { opacity: .45; } }
+  #enemies { top: 18px; right: 18px; color: #ff8a8a; }
+
+  /* hearts */
+  #hearts { position: absolute; bottom: 18px; left: 18px; display: flex; gap: 3px;
+    padding: 8px 12px; border-radius: 12px; background: rgba(0,0,0,.35);
+    backdrop-filter: blur(4px); border: 1px solid rgba(255,255,255,.08); }
+  .heart { position: relative; width: 24px; height: 24px; font-size: 24px; line-height: 24px; }
+  .heart span { position: absolute; left: 0; top: 0; }
+  .heart .base { color: #3a2230; }
+  .heart .fg   { color: #ff3b5c; overflow: hidden; text-shadow: 0 0 6px rgba(255,59,92,.6); }
+
+  /* ammo */
+  #ammo { bottom: 18px; right: 18px; top: auto; font-size: 22px; color: #cfe0ff;
+    font-variant-numeric: tabular-nums; }
+  #ammo.reloading { color: #ffd34d; }
+  #ammo.empty { color: #ff5b5b; }
+
+  /* damage flash */
+  #dmgFlash { position: fixed; inset: 0; pointer-events: none; z-index: 9; opacity: 0;
+    background: radial-gradient(circle at center, rgba(255,0,0,0) 45%, rgba(200,0,0,.55) 100%);
+    transition: opacity .08s ease-out; }
+
+  /* crosshair */
+  #cross {
+    position: fixed; top: 50%; left: 50%; width: 22px; height: 22px;
+    transform: translate(-50%, -50%); pointer-events: none;
+  }
+  #cross::before, #cross::after {
+    content: ""; position: absolute; background: rgba(255,255,255,.85);
+    box-shadow: 0 0 4px rgba(0,0,0,.8);
+  }
+  #cross::before { left: 50%; top: 0; width: 2px; height: 100%; transform: translateX(-50%); }
+  #cross::after { top: 50%; left: 0; height: 2px; width: 100%; transform: translateY(-50%); }
+  #cross.hideForScope { opacity: 0; }
+
+  /* sniper scope overlay — black lens mask, glass rim and a duplex reticle with a lit center dot */
+  :root { --sc: 1; }
+  #scopeOverlay {
+    position: fixed; inset: 0; pointer-events: none; z-index: 8;
+    opacity: 0; transition: opacity .08s ease-out;
+  }
+  #scopeOverlay.active { opacity: 1; }
+  #scopeOverlay .mask {
+    position: absolute; inset: 0;
+    background: radial-gradient(circle at center, transparent 0 calc(27vmin * var(--sc)), #05070a calc(27.6vmin * var(--sc)) 100%);
+  }
+  #scopeOverlay .rim {
+    position: absolute; top: 50%; left: 50%;
+    width: calc(54.4vmin * var(--sc)); height: calc(54.4vmin * var(--sc));
+    transform: translate(-50%, -50%); border-radius: 50%;
+    box-shadow: 0 0 0 4px rgba(0,0,0,.9),
+                inset 0 0 3px 2px rgba(230,240,235,.16),
+                inset 0 0 48px 14px rgba(0,0,0,.65);
+  }
+  #scopeOverlay .seg { position: absolute; background: rgba(10,10,10,.82); }
+  #scopeOverlay .seg.vert { left: 50%; width: 1.5px; height: calc(22vmin * var(--sc)); transform: translateX(-50%); }
+  #scopeOverlay .seg.horz { top: 50%; height: 1.5px; width: calc(22vmin * var(--sc)); transform: translateY(-50%); }
+  #scopeOverlay .seg.top { top: calc(50% - 25vmin * var(--sc)); }
+  #scopeOverlay .seg.bottom { top: calc(50% + 3vmin * var(--sc)); }
+  #scopeOverlay .seg.left { left: calc(50% - 25vmin * var(--sc)); }
+  #scopeOverlay .seg.right { left: calc(50% + 3vmin * var(--sc)); }
+  #scopeOverlay .tick { position: absolute; background: rgba(10,10,10,.75); }
+  #scopeOverlay .tick.tv { width: 1.5px; height: calc(2.4vmin * var(--sc)); left: 50%; transform: translateX(-50%); }
+  #scopeOverlay .tick.th { height: 1.5px; width: calc(2.4vmin * var(--sc)); top: 50%; transform: translateY(-50%); }
+  #scopeOverlay .tick.t1 { top: calc(50% - 12vmin * var(--sc)); }
+  #scopeOverlay .tick.t2 { top: calc(50% + 12vmin * var(--sc)); }
+  #scopeOverlay .tick.t3 { left: calc(50% - 12vmin * var(--sc)); }
+  #scopeOverlay .tick.t4 { left: calc(50% + 12vmin * var(--sc)); }
+  #scopeOverlay .dot {
+    position: absolute; top: 50%; left: 50%; width: 5px; height: 5px; border-radius: 50%;
+    transform: translate(-50%, -50%); background: #ff4a36; box-shadow: 0 0 6px 1px rgba(255,60,40,.8);
+  }
+
+  /* ---------- 2-player split screen ---------- */
+  .mpOnly { display: none; }
+  body.mp .mpOnly { display: block; }
+  body.mp #cross { left: 25%; }
+  body.mp #scopeOverlay { right: 50vw; }
+  body.mp { --sc: 0.55; }
+  body.mp #ammo { right: calc(50% + 18px); }
+  #splitDivider {
+    position: fixed; top: 0; left: 50%; width: 2px; height: 100%;
+    background: rgba(255,255,255,.35); box-shadow: 0 0 8px rgba(0,0,0,.6);
+    z-index: 8; transform: translateX(-50%);
+  }
+  #cross2 {
+    position: fixed; top: 50%; left: 75%; width: 22px; height: 22px;
+    transform: translate(-50%, -50%); pointer-events: none;
+  }
+  #cross2::before, #cross2::after {
+    content: ""; position: absolute; background: rgba(255,255,255,.85);
+    box-shadow: 0 0 4px rgba(0,0,0,.8);
+  }
+  #cross2::before { left: 50%; top: 0; width: 2px; height: 100%; transform: translateX(-50%); }
+  #cross2::after { top: 50%; left: 0; height: 2px; width: 100%; transform: translateY(-50%); }
+  #hearts2 { position: fixed; bottom: 18px; left: calc(50% + 18px); display: flex; gap: 3px;
+    padding: 8px 12px; border-radius: 12px; background: rgba(0,0,0,.35);
+    backdrop-filter: blur(4px); border: 1px solid rgba(255,255,255,.08); }
+  #ammo2 { position: fixed; bottom: 18px; right: 18px; font-size: 22px; color: #cfe0ff;
+    font-variant-numeric: tabular-nums; }
+  #ammo2.reloading { color: #ffd34d; }
+  #ammo2.empty { color: #ff5b5b; }
+  .p1tag { position: fixed; bottom: 54px; left: 18px; color: #ffd88a; font-size: 12px;
+    font-weight: 800; letter-spacing: .5px; }
+  .p2tag { position: fixed; bottom: 54px; left: calc(50% + 18px); color: #9fd6ff; font-size: 12px;
+    font-weight: 800; letter-spacing: .5px; }
+  .coopToggle { display: flex; align-items: center; justify-content: center; gap: 8px;
+    font-size: 14px; opacity: .85; margin: -6px 0 18px; cursor: pointer; }
+  .coopToggle input { width: 16px; height: 16px; }
+
+  /* overlays */
+  .overlay {
+    position: fixed; inset: 0; display: grid; place-items: center; text-align: center;
+    background: radial-gradient(circle at center, rgba(20,20,40,.75), rgba(5,5,12,.95));
+    color: #fff; z-index: 10;
+  }
+  .overlay.hidden { display: none; }
+  #menuArt { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .overlay .card { position: relative; z-index: 1; }
+  #startScreen .card { background: rgba(8, 8, 18, .62); border-radius: 20px; }
+  .card { max-width: 560px; padding: 36px 44px; }
+  .card h1 {
+    font-size: 56px; letter-spacing: 3px; margin-bottom: 6px;
+    background: linear-gradient(180deg, #ffe98a, #f5b800);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .card p { font-size: 18px; line-height: 1.6; opacity: .9; margin-bottom: 22px; }
+  .card .keys { font-size: 15px; opacity: .7; margin-bottom: 26px; line-height: 1.9; }
+  kbd {
+    background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.2);
+    border-radius: 6px; padding: 2px 8px; font-family: monospace; font-size: 14px;
+  }
+  button {
+    pointer-events: auto; cursor: pointer; font-size: 20px; font-weight: 800;
+    letter-spacing: 1px; padding: 14px 40px; border: none; border-radius: 12px;
+    color: #5a3a00; background: linear-gradient(180deg, #ffe98a, #f5b800);
+    box-shadow: 0 6px 20px rgba(245,184,0,.4); transition: transform .1s;
+  }
+  button:hover { transform: translateY(-2px); }
+  button:active { transform: translateY(0); }
+  .final { font-size: 26px; color: #ffd34d; margin-bottom: 18px; }
+
+  /* level select */
+  .levels { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin-bottom: 8px; }
+  .lvlBtn { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 14px 10px; font-size: 22px; }
+  .lvlBtn small { font-size: 12px; font-weight: 700; letter-spacing: .5px; color: #7a5200; }
+  .endBtns { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+  .endBtns button { font-size: 18px; padding: 12px 26px; }
+  #menuBtn { background: rgba(255,255,255,.14); color: #fff; box-shadow: none; border: 1px solid rgba(255,255,255,.25); }
+
+  /* wallet badge */
+  .wallet { font-size: 22px; font-weight: 800; color: #ffd34d; margin-bottom: 18px; }
+  .coinIco { display: inline-grid; place-items: center; width: 26px; height: 26px;
+    border-radius: 50%; background: radial-gradient(circle at 35% 30%, #ffe98a, #f5b800 60%, #c98a00);
+    color: #8a5a00; font-weight: 900; font-size: 16px; vertical-align: -6px;
+    box-shadow: inset 0 0 0 2px #ffe98a, 0 0 8px #ffcc33; }
+
+  /* shop */
+  .shopCard { max-width: 720px; }
+  #shopList { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 20px;
+    max-height: 56vh; overflow-y: auto; padding-right: 4px; }
+  .gun { display: flex; flex-direction: column; gap: 6px; text-align: left;
+    padding: 14px 16px; border-radius: 12px; background: rgba(255,255,255,.06);
+    border: 1px solid rgba(255,255,255,.12); }
+  .gun.equipped { border-color: #f5b800; box-shadow: 0 0 0 1px #f5b800 inset; }
+  .gun .top { display: flex; justify-content: space-between; align-items: baseline; }
+  .gun .gname { font-size: 20px; font-weight: 800; }
+  .gun .tag { font-size: 11px; font-weight: 800; letter-spacing: .5px; padding: 2px 8px;
+    border-radius: 99px; }
+  .gun .tag.auto { background: #3a2a55; color: #d6b8ff; }
+  .gun .tag.manual { background: #2a3a55; color: #b8d6ff; }
+  .gun .stats { font-size: 13px; opacity: .85; line-height: 1.7; }
+  .gun .stats b { color: #ffd34d; font-weight: 700; }
+  .gun button { width: 100%; font-size: 15px; padding: 9px; margin-top: 4px; letter-spacing: .5px; }
+  .gun button:disabled { opacity: .5; cursor: default; }
+  .gun button.equip { background: rgba(255,255,255,.16); color: #fff; box-shadow: none;
+    border: 1px solid rgba(255,255,255,.25); }
+  .gun button.owned { background: #1f6f3a; color: #cfffe0; box-shadow: none; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<div id="hud">
+  <div class="stat" id="coins"><span class="ico">S</span><span id="coinCount">0</span></div>
+  <div class="stat" id="timer">30.0</div>
+  <div class="stat" id="enemies">Enemies: 0</div>
+  <div id="hearts"></div>
+  <div class="stat" id="ammo">30 / 30</div>
+</div>
+<div id="dmgFlash"></div>
+<div id="cross"></div>
+<div id="scopeOverlay">
+  <div class="mask"></div>
+  <div class="rim"></div>
+  <i class="seg vert top"></i>
+  <i class="seg vert bottom"></i>
+  <i class="seg horz left"></i>
+  <i class="seg horz right"></i>
+  <i class="tick tv t1"></i>
+  <i class="tick tv t2"></i>
+  <i class="tick th t3"></i>
+  <i class="tick th t4"></i>
+  <i class="dot"></i>
+</div>
+
+<div id="splitDivider" class="mpOnly"></div>
+<div id="cross2" class="mpOnly"></div>
+<div id="hearts2" class="mpOnly"></div>
+<div class="stat mpOnly" id="ammo2">30 / 30</div>
+<div class="p1tag mpOnly">P1</div>
+<div class="p2tag mpOnly">P2</div>
+
+<div class="overlay" id="startScreen">
+  <canvas id="menuArt"></canvas>
+  <div class="card">
+    <h1>SHOOTY</h1>
+    <div class="wallet"><span class="coinIco">S</span> <span id="walletTitle">0</span> S-coins</div>
+    <p>Hunt the robots. Every kill drops a gold <b>S</b>-coin — your coins bank between runs. Spend them in the <b>shop</b> on better guns. Climb the stairs of the <b>tower</b> in the middle to grab the <b>sniper</b>, and open <b>chests</b> for bonus coins — rare <b>glowing chests</b> deep in the forest hold surprise guns for the run. Robots shoot back; reload anytime with <kbd>R</kbd>.</p>
+    <div class="levels">
+      <button class="lvlBtn" data-level="1">LEVEL 1<small>STAND &amp; SHOOT</small></button>
+      <button class="lvlBtn" data-level="2">LEVEL 2<small>MOVE &amp; SHOOT</small></button>
+      <button class="lvlBtn" data-level="3">LEVEL 3<small>TOUGHER BOTS</small></button>
+      <button class="lvlBtn" data-level="4">LEVEL 4<small>NIGHTMARE</small></button>
+    </div>
+    <label class="coopToggle"><input type="checkbox" id="coopToggle"> 🎮 2-PLAYER SPLIT SCREEN</label>
+    <button id="shopBtn">🛒 SHOP</button>
+    <div class="keys">
+      <kbd>W A S D</kbd> move &nbsp; <kbd>Mouse</kbd> look &nbsp; <kbd>Click</kbd> shoot &nbsp; <kbd>R</kbd> reload &nbsp; <kbd>O</kbd> scope<br>
+      <kbd>Space</kbd> jump &nbsp; <kbd>Shift</kbd> sprint &nbsp; <kbd>Esc</kbd> release mouse<br>
+      Co-op — Player 2: <kbd>↑ ↓</kbd> walk &nbsp; <kbd>← →</kbd> turn &nbsp; fires automatically on target
+    </div>
+  </div>
+</div>
+
+<div class="overlay hidden" id="shopScreen">
+  <div class="card shopCard">
+    <h1>SHOP</h1>
+    <div class="wallet"><span class="coinIco">S</span> <span id="walletShop">0</span> S-coins</div>
+    <div id="shopList"></div>
+    <button id="shopBack">← BACK</button>
+  </div>
+</div>
+
+<div class="overlay hidden" id="endScreen">
+  <div class="card">
+    <h1 id="endTitle">TIME!</h1>
+    <div class="final" id="finalScore">You collected 0 S-coins</div>
+    <p id="endMsg"></p>
+    <div class="endBtns">
+      <button id="againBtn">PLAY AGAIN</button>
+      <button id="menuBtn">← LEVELS</button>
+    </div>
+  </div>
+</div>
+
+<script type="importmap">
+{ "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+</script>
+
+<script type="module">
+import * as THREE from "three";
+
+// ---------- Core setup ----------
+const app = document.getElementById("app");
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+app.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x9ecfff);
+scene.fog = new THREE.Fog(0x9ecfff, 70, 300);
+
+const camera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.1, 400);
+
+// ---------- Lighting ----------
+scene.add(new THREE.HemisphereLight(0xbfe3ff, 0x2e5228, 0.8));
+const sun = new THREE.DirectionalLight(0xffffff, 1.3);
+sun.position.set(35, 60, 20);
+sun.castShadow = true;
+sun.shadow.mapSize.set(4096, 4096);
+sun.shadow.camera.left = -125; sun.shadow.camera.right = 125;
+sun.shadow.camera.top = 125; sun.shadow.camera.bottom = -125;
+scene.add(sun);
+
+// ---------- Arena ----------
+const ARENA = 100;
+const PLAYER_SPAWN = new THREE.Vector3(0, 1.7, ARENA * 0.55); // spawn facing the tower
+// grass texture painted on a canvas: mottled green base + short blade strokes
+function makeGrassTexture() {
+  const c = document.createElement("canvas");
+  c.width = c.height = 256;
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = "#3e7a2e";
+  ctx.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 900; i++) {
+    ctx.fillStyle = `hsl(${100 + Math.random() * 30}, ${40 + Math.random() * 25}%, ${22 + Math.random() * 18}%)`;
+    ctx.fillRect(Math.random() * 256, Math.random() * 256, 2 + Math.random() * 3, 2 + Math.random() * 3);
+  }
+  ctx.lineWidth = 1;
+  for (let i = 0; i < 350; i++) {
+    const x = Math.random() * 256, y = Math.random() * 256;
+    ctx.strokeStyle = `hsla(${95 + Math.random() * 35}, 55%, ${30 + Math.random() * 25}%, .8)`;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + (Math.random() - 0.5) * 4, y - 4 - Math.random() * 5);
+    ctx.stroke();
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(24, 24);
+  tex.anisotropy = 8;
+  return tex;
+}
+const floor = new THREE.Mesh(
+  new THREE.PlaneGeometry(ARENA * 2, ARENA * 2),
+  new THREE.MeshStandardMaterial({ map: makeGrassTexture(), color: 0x9fbf8f, roughness: 1 })
+);
+floor.rotation.x = -Math.PI / 2;
+floor.receiveShadow = true;
+scene.add(floor);
+
+// meshes that stop bullets (used by the shooting raycast)
+const worldSolids = [floor];
+
+// walls
+const wallMat = new THREE.MeshStandardMaterial({ color: 0x2f5a26, roughness: 0.95 }); // hedge walls
+function wall(w, h, d, x, y, z) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), wallMat);
+  m.position.set(x, y, z);
+  m.castShadow = m.receiveShadow = true;
+  scene.add(m);
+  worldSolids.push(m);
+}
+const H = 6;
+wall(ARENA * 2, H, 1, 0, H / 2,  ARENA);
+wall(ARENA * 2, H, 1, 0, H / 2, -ARENA);
+wall(1, H, ARENA * 2,  ARENA, H / 2, 0);
+wall(1, H, ARENA * 2, -ARENA, H / 2, 0);
+
+// trees scattered as cover — also solid obstacles you & the robots collide with
+const obstacles = []; // { x, z, radius, top }
+const treeSpots = []; // tree positions — used to tuck chests behind trunks
+const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5d4028, roughness: 1 });
+const leafMats = [
+  new THREE.MeshStandardMaterial({ color: 0x2d6a24, roughness: 1, flatShading: true }),
+  new THREE.MeshStandardMaterial({ color: 0x3a7d2c, roughness: 1, flatShading: true }),
+  new THREE.MeshStandardMaterial({ color: 0x276b35, roughness: 1, flatShading: true }),
+];
+function makeTree(x, z, scale) {
+  const tree = new THREE.Group();
+  const trunkH = 1.6 * scale;
+  const trunk = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.22 * scale, 0.32 * scale, trunkH, 7),
+    trunkMat
+  );
+  trunk.position.y = trunkH / 2;
+  trunk.castShadow = trunk.receiveShadow = true;
+  tree.add(trunk);
+  worldSolids.push(trunk);
+
+  // 3 stacked, shrinking cones of foliage
+  const leafMat = leafMats[Math.floor(Math.random() * leafMats.length)];
+  let y = trunkH;
+  let r = 1.3 * scale;
+  for (let i = 0; i < 3; i++) {
+    const h = (1.5 - i * 0.25) * scale;
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(r, h, 8), leafMat);
+    cone.position.set((Math.random() - 0.5) * 0.1, y + h * 0.42, (Math.random() - 0.5) * 0.1);
+    cone.rotation.y = Math.random() * Math.PI;
+    cone.castShadow = cone.receiveShadow = true;
+    tree.add(cone);
+    worldSolids.push(cone);
+    y += h * 0.55;
+    r *= 0.72;
+  }
+
+  tree.position.set(x, 0, z);
+  tree.rotation.y = Math.random() * Math.PI * 2;
+  scene.add(tree);
+  obstacles.push({ x, z, radius: scale * 0.9, top: scale * 4 }); // top = roughly the foliage tip
+  treeSpots.push({ x, z, r: scale * 0.9 });
+}
+for (let i = 0; i < 100; i++) {
+  let x, z;
+  do {
+    x = (Math.random() - 0.5) * ARENA * 1.85;
+    z = (Math.random() - 0.5) * ARENA * 1.85;
+  } while (Math.hypot(x, z) < 11 || Math.hypot(x, z - PLAYER_SPAWN.z) < 8); // keep tower base & spawn clear
+  makeTree(x, z, 1.1 + Math.random() * 2.3);
+}
+
+// push a position (with .x/.z) out of any tree it overlaps
+function resolveObstacles(p, bodyR, feetY = 0) {
+  for (const o of obstacles) {
+    // climbable blocks stop pushing you sideways once you're (almost) on top of them
+    if (o.top !== undefined && feetY > o.top - 0.7) continue;
+    const dx = p.x - o.x, dz = p.z - o.z;
+    const dist = Math.hypot(dx, dz);
+    const min = o.radius + bodyR;
+    if (dist < min && dist > 1e-4) {
+      const push = min - dist;
+      p.x += (dx / dist) * push;
+      p.z += (dz / dist) * push;
+    }
+  }
+}
+
+// ---------- Sniper tower (center of the map) ----------
+// Solid blocks the player can stand on: { minX, maxX, minZ, maxZ, top }
+const platforms = [];
+const towerMat = new THREE.MeshStandardMaterial({ color: 0x8d857a, roughness: 0.9 });
+const stepMat  = new THREE.MeshStandardMaterial({ color: 0x6e675e, roughness: 0.9 });
+function towerBlock(w, h, d, x, y, z, mat) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+  m.position.set(x, y, z);
+  m.castShadow = m.receiveShadow = true;
+  scene.add(m);
+  platforms.push({ minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2, top: y + h / 2 });
+  worldSolids.push(m);
+  return m;
+}
+const TOWER_TOP = 9;
+const stoneMat = new THREE.MeshStandardMaterial({ color: 0x726a60, roughness: 0.95 });
+
+// stouter foundation footing — stays within the 3.5 collision radius, just reads as a plinth
+towerBlock(6.4, 1.0, 6.4, 0, 0.5, 0, stoneMat);
+
+towerBlock(6, TOWER_TOP, 6, 0, TOWER_TOP / 2, 0, towerMat);
+obstacles.push({ x: 0, z: 0, radius: 3.5, top: TOWER_TOP }); // solid sides until you reach the roof
+
+// projecting cornice just under the roofline (a corbel table), same top as the shaft so it adds no new ledge
+towerBlock(6.7, 0.4, 6.7, 0, TOWER_TOP - 0.2, 0, stoneMat);
+
+// low parapet on two sides of the roof — jump over it to leap off
+towerBlock(6.6, 0.9, 0.3, 0, TOWER_TOP + 0.45, -3.15, towerMat);
+towerBlock(0.3, 0.9, 6.6, -3.15, TOWER_TOP + 0.45, 0, towerMat);
+
+// crenellated merlons along the two open roof edges (gap left in the middle for leaping off)
+const merlonMat = new THREE.MeshStandardMaterial({ color: 0x5f584f, roughness: 0.9 });
+for (const off of [-2, -1, 1, 2]) {
+  const mS = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.7, 0.55), merlonMat);
+  mS.position.set(off, TOWER_TOP + 0.35, 2.85);
+  mS.castShadow = mS.receiveShadow = true;
+  scene.add(mS);
+  const mE = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.7, 0.55), merlonMat);
+  mE.position.set(2.85, TOWER_TOP + 0.35, off);
+  mE.castShadow = mE.receiveShadow = true;
+  scene.add(mE);
+}
+
+// arrow-slit windows set into the shaft faces, breaking up the flat stone
+const slitMat = new THREE.MeshStandardMaterial({ color: 0x0b0b0d, roughness: 0.8 });
+const slitFaces = [
+  { x: 0, z: 3.01, ry: 0 }, { x: 0, z: -3.01, ry: 0 },
+  { x: 3.01, z: 0, ry: Math.PI / 2 }, { x: -3.01, z: 0, ry: Math.PI / 2 },
+];
+for (const f of slitFaces) {
+  for (const h of [3.0, 6.2]) {
+    const slit = new THREE.Mesh(new THREE.BoxGeometry(0.16, 1.1, 0.3), slitMat);
+    slit.position.set(f.x, h, f.z);
+    slit.rotation.y = f.ry;
+    scene.add(slit);
+  }
+}
+
+// corner turret finials — cylinder shafts with conical caps for a classic castle-tower silhouette
+const turretCapMat = new THREE.MeshStandardMaterial({ color: 0x3c4048, roughness: 0.7 });
+for (const [cx, cz] of [[2.85, -2.85], [-2.85, -2.85], [2.85, 2.85], [-2.85, 2.85]]) {
+  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.46, 1.3, 10), stoneMat);
+  shaft.position.set(cx, TOWER_TOP + 0.65, cz);
+  const cap = new THREE.Mesh(new THREE.ConeGeometry(0.62, 0.8, 10), turretCapMat);
+  cap.position.set(cx, TOWER_TOP + 1.7, cz);
+  shaft.castShadow = cap.castShadow = true;
+  scene.add(shaft, cap);
+}
+
+// wide, gently-rising spiral stairs — under one full turn so steps never overlap.
+// First step faces the spawn; each riser is 0.5, well within walk-up range.
+const STEPS = 18;
+for (let i = 0; i < STEPS; i++) {
+  const a = Math.PI / 2 + i * (Math.PI * 1.8 / STEPS);
+  const top = ((i + 1) / STEPS) * TOWER_TOP;
+  const sx = Math.cos(a) * 4.8, sz = Math.sin(a) * 4.8;
+  towerBlock(3.0, top, 3.0, sx, top / 2, sz, stepMat);
+  obstacles.push({ x: sx, z: sz, radius: 1.5, top });
+}
+
+// ---------- Sniper pickup (on the tower roof) ----------
+const sniperPickup = new THREE.Group();
+{
+  const metal = new THREE.MeshStandardMaterial({ color: 0x2c3d2a, metalness: 0.5, roughness: 0.4 });
+  const dark  = new THREE.MeshStandardMaterial({ color: 0x111316, metalness: 0.6, roughness: 0.4 });
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.2, 1.1), metal);
+  const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.9, 8), dark);
+  barrel.rotation.x = Math.PI / 2; barrel.position.set(0, 0.03, -0.95);
+  const scope = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.42, 10), dark);
+  scope.rotation.x = Math.PI / 2; scope.position.set(0, 0.17, -0.1);
+  const stock = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.3, 0.35), metal);
+  stock.position.set(0, -0.1, 0.6);
+  sniperPickup.add(body, barrel, scope, stock);
+  sniperPickup.traverse(o => { if (o.isMesh) o.castShadow = true; });
+}
+sniperPickup.position.set(0, TOWER_TOP + 1.1, 0);
+sniperPickup.rotation.z = 0.4;
+scene.add(sniperPickup);
+let sniperTaken = false;
+function updateSniperPickup(dt, t) {
+  if (sniperTaken) return;
+  sniperPickup.rotation.y += dt * 1.5;
+  sniperPickup.position.y = TOWER_TOP + 1.1 + Math.sin(t * 2.2) * 0.12;
+  if (Math.hypot(player.pos.x, player.pos.z) < 2.0 &&
+      Math.abs(player.pos.y - 1.7 - TOWER_TOP) < 1.3) {
+    sniperTaken = true;
+    sniperPickup.visible = false;
+    equippedGun = gunById("sniper");
+    state.ammo = equippedGun.mag;
+    state.reloading = false;
+    state.fireTimer = 0;
+    applyGunVisual();
+    updateAmmoHUD();
+  }
+}
+
+// ---------- Coin chests ----------
+const chests = [];
+const chestWoodMat = new THREE.MeshStandardMaterial({ color: 0x7a4a26, roughness: 0.9 });
+const chestTrimMat = new THREE.MeshStandardMaterial({ color: 0xf5b800, metalness: 0.7, roughness: 0.3, emissive: 0x3a2a00 });
+// rare gun chests: dark purple wood, glowing cyan trim
+const chestDarkMat = new THREE.MeshStandardMaterial({ color: 0x3a2f55, roughness: 0.8 });
+const chestGlowMat = new THREE.MeshStandardMaterial({ color: 0x66e0ff, metalness: 0.6, roughness: 0.3, emissive: 0x1a5a70 });
+function makeChest(x, z, special = false) {
+  const wood = special ? chestDarkMat : chestWoodMat;
+  const trim = special ? chestGlowMat : chestTrimMat;
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.55, 0.7), wood);
+  body.position.y = 0.275;
+  const band = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.57, 0.72), trim);
+  band.position.y = 0.275;
+  const lidPivot = new THREE.Group();      // hinged at the back edge
+  lidPivot.position.set(0, 0.55, -0.35);
+  const lid = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.22, 0.7), wood);
+  lid.position.set(0, 0.11, 0.35);
+  const lidBand = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.24, 0.72), trim);
+  lidBand.position.set(0, 0.11, 0.35);
+  lidPivot.add(lid, lidBand);
+  const lock = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.2, 0.06), trim);
+  lock.position.set(0, 0.5, 0.36);
+  g.add(body, band, lidPivot, lock);
+  g.traverse(o => { if (o.isMesh) o.castShadow = o.receiveShadow = true; });
+  g.position.set(x, 0, z);
+  if (special) g.scale.setScalar(1.15);
+  g.rotation.y = Math.random() * Math.PI * 2;
+  scene.add(g);
+  chests.push({ group: g, lidPivot, x, z, special, opened: false, value: 4 + Math.floor(Math.random() * 3) });
+}
+function spawnChests() {
+  chests.splice(0).forEach(c => scene.remove(c.group));
+  // each chest hides right behind a tree (on the side facing away from the tower),
+  // and chests keep a big minimum distance from each other so they're spread out
+  const used = [];
+  let guard = 0;
+  while (used.length < 10 && guard++ < 800) {
+    const t = treeSpots[Math.floor(Math.random() * treeSpots.length)];
+    const away = Math.atan2(t.z, t.x) + (Math.random() - 0.5) * 1.2;
+    const x = t.x + Math.cos(away) * (t.r + 1.0);
+    const z = t.z + Math.sin(away) * (t.r + 1.0);
+    if (Math.abs(x) > ARENA - 2.5 || Math.abs(z) > ARENA - 2.5) continue;
+    if (Math.hypot(x, z - PLAYER_SPAWN.z) < 10) continue;
+    if (used.some(u => Math.hypot(u.x - x, u.z - z) < 30)) continue;
+    used.push({ x, z });
+    makeChest(x, z);
+  }
+
+  // 3 rare gun chests — behind the biggest trees, deep in the outer forest
+  const outer = treeSpots.filter(t => Math.hypot(t.x, t.z) > ARENA * 0.5);
+  const big = outer.filter(t => t.r > 1.8);
+  const cand = big.length >= 3 ? big : outer;
+  const sUsed = [];
+  guard = 0;
+  while (sUsed.length < 3 && guard++ < 600 && cand.length) {
+    const t = cand[Math.floor(Math.random() * cand.length)];
+    const away = Math.atan2(t.z, t.x) + (Math.random() - 0.5) * 0.8;
+    const x = t.x + Math.cos(away) * (t.r + 1.0);
+    const z = t.z + Math.sin(away) * (t.r + 1.0);
+    if (Math.abs(x) > ARENA - 2.5 || Math.abs(z) > ARENA - 2.5) continue;
+    if (sUsed.some(u => Math.hypot(u.x - x, u.z - z) < 45)) continue;
+    sUsed.push({ x, z });
+    makeChest(x, z, true);
+  }
+}
+spawnChests();
+
+function playChestOpen() {
+  if (!audioCtx) return;
+  const t = audioCtx.currentTime;
+  [523, 784, 1047].forEach((f, i) => {
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.type = "triangle"; o.frequency.value = f;
+    g.gain.setValueAtTime(0.0001, t + i * 0.07);
+    g.gain.exponentialRampToValueAtTime(0.25, t + i * 0.07 + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.001, t + i * 0.07 + 0.25);
+    o.connect(g).connect(audioCtx.destination);
+    o.start(t + i * 0.07); o.stop(t + i * 0.07 + 0.3);
+  });
+}
+function updateChests(dt) {
+  for (const c of chests) {
+    if (c.opened) {
+      c.lidPivot.rotation.x = Math.max(-1.9, c.lidPivot.rotation.x - dt * 6);
+    } else if (player.pos.y < 3 &&
+               Math.hypot(player.pos.x - c.x, player.pos.z - c.z) < 2.0) {
+      c.opened = true;
+      playChestOpen();
+      if (c.special) {
+        // a random gun — yours until the run ends
+        const pool = GUNS.filter(g => g.id !== equippedGun.id);
+        equippedGun = pool[Math.floor(Math.random() * pool.length)];
+        state.ammo = equippedGun.mag;
+        state.reloading = false;
+        state.fireTimer = 0;
+        applyGunVisual();
+        updateAmmoHUD();
+      } else {
+        // burst of coins in a ring around the chest
+        for (let i = 0; i < c.value; i++) {
+          const a = (i / c.value) * Math.PI * 2;
+          spawnCoin(c.x + Math.cos(a) * 1.8, c.z + Math.sin(a) * 1.8);
+        }
+      }
+    }
+  }
+}
+
+// ---------- Player controller (pointer lock) ----------
+const player = {
+  pos: new THREE.Vector3(0, 1.7, 0),
+  vel: new THREE.Vector3(),
+  yaw: 0, pitch: 0,
+  onGround: true,
+  speed: 8, sprint: 14,
+};
+// player 2 (local co-op): Arrow Keys only — Up/Down walk, Left/Right turn.
+// Aims wherever they're facing and fires automatically once a robot is in their sights.
+let multiplayer = false;
+const player2 = {
+  pos: new THREE.Vector3(0, 1.7, 0),
+  vel: new THREE.Vector3(),
+  yaw: 0, pitch: 0,
+  onGround: true,
+  speed: 8, sprint: 14,
+  turnSpeed: 2.6,
+};
+const keys = {};
+addEventListener("keydown", e => { keys[e.code] = true; });
+addEventListener("keyup",   e => { keys[e.code] = false; });
+
+const canvas = renderer.domElement;
+canvas.addEventListener("click", () => {
+  if (state.running && document.pointerLockElement !== canvas) canvas.requestPointerLock();
+});
+addEventListener("mousemove", e => {
+  if (document.pointerLockElement !== canvas) return;
+  const sens = scoped ? 0.0009 : 0.0022; // steadier aim while scoped
+  player.yaw   -= e.movementX * sens;
+  player.pitch -= e.movementY * sens;
+  player.pitch = Math.max(-1.4, Math.min(1.4, player.pitch));
+});
+
+// ---------- Gun viewmodels (a bespoke model per gun) ----------
+scene.add(camera); // camera must be in the graph so its child gun renders
+const gunRig = new THREE.Group();
+const GUN_Z = -0.7;
+gunRig.position.set(0.34, -0.5, GUN_Z); // lower-right, waist height
+gunRig.rotation.y = 0.05;
+camera.add(gunRig);
+let scoped = false; // O toggles aim-down-scope
+
+// player 2's camera + viewmodel rig (only rendered/used in co-op split screen; no scope/ADS)
+const camera2 = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.1, 400);
+scene.add(camera2);
+const gunRig2 = new THREE.Group();
+gunRig2.position.set(0.34, -0.5, GUN_Z);
+gunRig2.rotation.y = 0.05;
+camera2.add(gunRig2);
+
+const matSteel = new THREE.MeshStandardMaterial({ color: 0x3a3d42, metalness: 0.75, roughness: 0.35 });
+const matDark  = new THREE.MeshStandardMaterial({ color: 0x17181c, metalness: 0.6,  roughness: 0.45 });
+const matWood  = new THREE.MeshStandardMaterial({ color: 0x6b452a, roughness: 0.8 });
+const matGrip  = new THREE.MeshStandardMaterial({ color: 0x232428, roughness: 0.9 });
+const matGold  = new THREE.MeshStandardMaterial({ color: 0xf5b800, metalness: 0.85, roughness: 0.25 });
+const matPlasma = new THREE.MeshBasicMaterial({ color: 0xb266ff });
+
+function gBox(parent, w, h, d, x, y, z, mat, rx = 0) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+  m.position.set(x, y, z); m.rotation.x = rx;
+  parent.add(m); return m;
+}
+function gCyl(parent, r, len, x, y, z, mat) {
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, 12), mat);
+  m.rotation.x = Math.PI / 2;
+  m.position.set(x, y, z);
+  parent.add(m); return m;
+}
+
+function buildGunModel(gun) {
+  const id = gun.model || gun.id;
+  const g = new THREE.Group();
+  let muzzleZ = -0.6;
+  if (id === "pistol") {
+    gBox(g, 0.15, 0.17, 0.62, 0, 0.02, -0.16, matSteel);          // slide
+    gCyl(g, 0.035, 0.1, 0, 0.02, -0.5, matDark);                  // muzzle
+    gBox(g, 0.13, 0.4, 0.17, 0, -0.26, 0.06, matGrip, 0.28);      // grip
+    gBox(g, 0.1, 0.05, 0.2, 0, -0.1, -0.05, matDark);             // trigger guard
+    gBox(g, 0.03, 0.05, 0.05, 0, 0.13, -0.42, matDark);           // front sight
+    muzzleZ = -0.56;
+  } else if (id === "smg") {
+    gBox(g, 0.16, 0.2, 0.7, 0, 0, -0.1, matDark);                 // receiver
+    gCyl(g, 0.04, 0.3, 0, 0.02, -0.58, matSteel);                 // barrel
+    gBox(g, 0.09, 0.34, 0.12, 0, -0.28, -0.12, matSteel, 0.15);   // magazine
+    gBox(g, 0.12, 0.34, 0.15, 0, -0.26, 0.18, matGrip, 0.25);     // grip
+    gBox(g, 0.14, 0.1, 0.35, 0, 0.03, 0.42, matDark);             // folded stock
+    muzzleZ = -0.75;
+  } else if (id === "shotgun") {
+    gCyl(g, 0.05, 1.0, 0, 0.05, -0.35, matSteel);                 // barrel
+    gCyl(g, 0.045, 0.85, 0, -0.06, -0.28, matDark);               // tube magazine
+    gBox(g, 0.11, 0.11, 0.3, 0, -0.06, -0.5, matWood);            // pump
+    gBox(g, 0.14, 0.22, 0.4, 0, 0, 0.15, matSteel);               // receiver
+    gBox(g, 0.13, 0.16, 0.45, 0, -0.08, 0.55, matWood, 0.12);     // stock
+    muzzleZ = -0.86;
+  } else if (id === "magnum") {
+    gBox(g, 0.1, 0.14, 0.7, 0, 0.05, -0.25, matSteel);            // barrel + shroud
+    gCyl(g, 0.035, 0.12, 0, 0.05, -0.62, matDark);
+    const drum = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.16, 6), matSteel);
+    drum.rotation.x = Math.PI / 2; drum.position.set(0, 0, 0.05);
+    g.add(drum);                                                  // revolver cylinder
+    gBox(g, 0.12, 0.34, 0.16, 0, -0.24, 0.2, matWood, 0.35);      // wood grip
+    gBox(g, 0.03, 0.06, 0.06, 0, 0.15, -0.5, matDark);            // front sight
+    muzzleZ = -0.68;
+  } else if (id === "db") {
+    gCyl(g, 0.045, 1.0, -0.05, 0.05, -0.35, matSteel);            // side-by-side barrels
+    gCyl(g, 0.045, 1.0,  0.05, 0.05, -0.35, matSteel);
+    gBox(g, 0.18, 0.2, 0.35, 0, 0, 0.1, matSteel);                // receiver
+    gBox(g, 0.14, 0.16, 0.45, 0, -0.08, 0.5, matWood, 0.12);      // stock
+    gBox(g, 0.14, 0.1, 0.3, 0, -0.03, -0.3, matWood);             // fore-end
+    muzzleZ = -0.86;
+  } else if (id === "lmg") {
+    gBox(g, 0.17, 0.2, 0.9, 0, 0, -0.05, matDark);                // receiver
+    gCyl(g, 0.045, 0.55, 0, 0.03, -0.75, matSteel);               // heavy barrel
+    gBox(g, 0.2, 0.28, 0.3, 0, -0.26, -0.02, matSteel);           // box magazine
+    gBox(g, 0.12, 0.3, 0.16, 0, -0.24, 0.35, matGrip, 0.25);      // grip
+    gBox(g, 0.13, 0.16, 0.4, 0, 0, 0.62, matDark);                // stock
+    gBox(g, 0.03, 0.25, 0.03, -0.06, -0.15, -0.9, matDark);       // bipod
+    gBox(g, 0.03, 0.25, 0.03,  0.06, -0.15, -0.9, matDark);
+    muzzleZ = -1.02;
+  } else if (id === "railgun") {
+    gBox(g, 0.18, 0.24, 0.7, 0, 0, 0.15, matDark);                // housing
+    gBox(g, 0.04, 0.1, 1.0, -0.06, 0.02, -0.55, matSteel);        // twin rails
+    gBox(g, 0.04, 0.1, 1.0,  0.06, 0.02, -0.55, matSteel);
+    const beamCore = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.95),
+      new THREE.MeshBasicMaterial({ color: 0x66e0ff }));
+    beamCore.position.set(0, 0.02, -0.55);
+    g.add(beamCore);                                              // glowing energy core
+    for (let i = 0; i < 3; i++) gCyl(g, 0.1, 0.06, 0, 0.02, -0.3 - i * 0.28, matDark); // coils
+    gBox(g, 0.12, 0.32, 0.16, 0, -0.26, 0.3, matGrip, 0.25);      // grip
+    muzzleZ = -1.1;
+  } else if (id === "rifle") {
+    gBox(g, 0.15, 0.18, 0.85, 0, 0, -0.05, matDark);              // receiver
+    gCyl(g, 0.04, 0.5, 0, 0.03, -0.7, matSteel);                  // barrel
+    gBox(g, 0.1, 0.3, 0.14, 0, -0.26, 0.02, matSteel, 0.3);       // angled magazine
+    gBox(g, 0.12, 0.3, 0.16, 0, -0.24, 0.3, matGrip, 0.25);       // grip
+    gBox(g, 0.13, 0.15, 0.5, 0, 0, 0.6, matWood);                 // stock
+    gBox(g, 0.12, 0.1, 0.4, 0, -0.05, -0.35, matWood);            // handguard
+    gBox(g, 0.03, 0.07, 0.05, 0, 0.15, -0.85, matDark);           // front sight
+    muzzleZ = -0.97;
+  } else if (id === "minigun") {
+    for (let i = 0; i < 6; i++) {                                 // rotating barrel cluster
+      const a = (i / 6) * Math.PI * 2;
+      gCyl(g, 0.035, 0.9, Math.cos(a) * 0.08, 0.02 + Math.sin(a) * 0.08, -0.45, matSteel);
+    }
+    gCyl(g, 0.13, 0.25, 0, 0.02, -0.05, matDark);                 // barrel clamp
+    gBox(g, 0.22, 0.28, 0.5, 0, -0.02, 0.35, matDark);            // body
+    gBox(g, 0.12, 0.3, 0.16, 0, -0.32, 0.5, matGrip, 0.3);        // grip
+    muzzleZ = -0.92;
+  } else if (id === "plasma") {
+    gBox(g, 0.17, 0.22, 0.75, 0, 0, -0.05, matDark);              // housing
+    const chamber = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 10), matPlasma);
+    chamber.position.set(0, 0.03, -0.15);
+    g.add(chamber);                                               // glowing plasma chamber
+    gCyl(g, 0.05, 0.4, 0, 0.02, -0.65, matSteel);                 // emitter barrel
+    const tip = new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 8), matPlasma);
+    tip.position.set(0, 0.02, -0.86);
+    g.add(tip);                                                   // emitter tip glow
+    gBox(g, 0.12, 0.3, 0.16, 0, -0.25, 0.28, matGrip, 0.25);      // grip
+    gBox(g, 0.13, 0.14, 0.35, 0, -0.02, 0.5, matDark);            // stock
+    muzzleZ = -0.9;
+  } else if (id === "crossbow") {
+    gBox(g, 0.1, 0.12, 0.75, 0, 0, -0.1, matWood);                // rail / stock
+    const limbL = gBox(g, 0.5, 0.06, 0.08, -0.26, 0.02, -0.4, matSteel);
+    limbL.rotation.y = 0.55;
+    const limbR = gBox(g, 0.5, 0.06, 0.08, 0.26, 0.02, -0.4, matSteel);
+    limbR.rotation.y = -0.55;
+    gCyl(g, 0.02, 0.9, 0, 0.08, -0.4, matDark);                   // taut string, edge-on
+    gBox(g, 0.1, 0.3, 0.14, 0, -0.24, 0.15, matGrip, 0.2);        // grip
+    gBox(g, 0.03, 0.06, 0.05, 0, 0.11, -0.75, matDark);           // sight
+    muzzleZ = -0.78;
+  } else if (id === "rocket") {
+    gCyl(g, 0.14, 0.95, 0, 0, -0.35, matDark);                    // launch tube
+    gCyl(g, 0.16, 0.12, 0, 0, -0.85, matSteel);                   // muzzle rim
+    gBox(g, 0.03, 0.22, 0.03, 0, 0.16, -0.55, matSteel);          // sight post
+    gBox(g, 0.12, 0.3, 0.18, 0, -0.26, 0.2, matGrip, 0.25);       // grip
+    gBox(g, 0.13, 0.15, 0.4, 0, -0.02, 0.45, matDark);            // rear housing
+    muzzleZ = -0.95;
+  } else { // sniper
+    gBox(g, 0.13, 0.18, 0.9, 0, 0, 0, matDark);                   // receiver
+    gCyl(g, 0.035, 0.8, 0, 0.03, -0.8, matSteel);                 // long barrel
+    gCyl(g, 0.05, 0.09, 0, 0.03, -1.18, matDark);                 // muzzle brake
+    const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.4, 12), matDark);
+    tube.rotation.x = Math.PI / 2; tube.position.set(0, 0.16, -0.05);
+    g.add(tube);                                                  // scope
+    gBox(g, 0.12, 0.3, 0.16, 0, -0.24, 0.35, matGrip, 0.25);      // grip
+    gBox(g, 0.13, 0.17, 0.45, 0, -0.04, 0.62, matWood, 0.08);     // stock
+    muzzleZ = -1.24;
+  }
+  if (gun.gold) g.traverse(o => { if (o.isMesh) o.material = matGold; }); // the Golden Gun
+  g.userData.muzzleZ = muzzleZ;
+  return g;
+}
+
+// yellow flash cone, repositioned to whichever muzzle the current gun has
+const flash = new THREE.Mesh(
+  new THREE.ConeGeometry(0.13, 0.34, 8),
+  new THREE.MeshBasicMaterial({ color: 0xffe066, transparent: true, opacity: 0 })
+);
+flash.rotation.x = -Math.PI / 2;
+gunRig.add(flash);
+let flashLife = 0, recoil = 0;
+
+// player 2's muzzle flash (mirrors `flash` above)
+const flash2 = new THREE.Mesh(
+  new THREE.ConeGeometry(0.13, 0.34, 8),
+  new THREE.MeshBasicMaterial({ color: 0xffe066, transparent: true, opacity: 0 })
+);
+flash2.rotation.x = -Math.PI / 2;
+gunRig2.add(flash2);
+let flashLife2 = 0, recoil2 = 0;
+
+// ---------- Sound ----------
+let audioCtx;
+function ensureAudio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === "suspended") audioCtx.resume();
+}
+function playShot() {
+  if (!audioCtx) return;
+  const t = audioCtx.currentTime;
+  // sharp noise crack
+  const n = audioCtx.sampleRate * 0.15;
+  const buf = audioCtx.createBuffer(1, n, audioCtx.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < n; i++) data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, 2);
+  const noise = audioCtx.createBufferSource();
+  noise.buffer = buf;
+  const bp = audioCtx.createBiquadFilter();
+  bp.type = "bandpass"; bp.frequency.value = 1400; bp.Q.value = 0.7;
+  const ng = audioCtx.createGain();
+  ng.gain.setValueAtTime(0.55, t);
+  ng.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
+  noise.connect(bp).connect(ng).connect(audioCtx.destination);
+  noise.start(t);
+  // low thump for body
+  const osc = audioCtx.createOscillator();
+  osc.type = "square";
+  osc.frequency.setValueAtTime(190, t);
+  osc.frequency.exponentialRampToValueAtTime(55, t + 0.1);
+  const og = audioCtx.createGain();
+  og.gain.setValueAtTime(0.5, t);
+  og.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+  osc.connect(og).connect(audioCtx.destination);
+  osc.start(t); osc.stop(t + 0.13);
+}
+function playEnemyShot(dist) {
+  if (!audioCtx) return;
+  const t = audioCtx.currentTime;
+  const vol = Math.max(0.05, 0.32 * (1 - dist / 45)); // quieter when far
+  const n = audioCtx.sampleRate * 0.12;
+  const buf = audioCtx.createBuffer(1, n, audioCtx.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < n; i++) data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, 2);
+  const noise = audioCtx.createBufferSource();
+  noise.buffer = buf;
+  const bp = audioCtx.createBiquadFilter();
+  bp.type = "bandpass"; bp.frequency.value = 900; bp.Q.value = 0.9;
+  const g = audioCtx.createGain();
+  g.gain.setValueAtTime(vol, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+  noise.connect(bp).connect(g).connect(audioCtx.destination);
+  noise.start(t);
+}
+
+// ---------- Shooting ----------
+const raycaster = new THREE.Raycaster();
+const muzzle = new THREE.PointLight(0xffcc66, 0, 12);
+scene.add(muzzle);
+const muzzle2 = new THREE.PointLight(0xffcc66, 0, 12);
+scene.add(muzzle2);
+
+let mouseDown = false;
+addEventListener("mousedown", e => {
+  if (e.button !== 0) return;
+  mouseDown = true;
+  if (!state.running || document.pointerLockElement !== canvas) return;
+  if (!equippedGun.auto) shoot(); // manual: one shot per click
+});
+addEventListener("mouseup", e => { if (e.button === 0) mouseDown = false; });
+
+// swap in the equipped gun's model
+let gunModel = null;
+function applyGunVisual() {
+  if (gunModel) gunRig.remove(gunModel);
+  gunModel = buildGunModel(equippedGun);
+  gunRig.add(gunModel);
+  flash.position.set(0, 0.02, gunModel.userData.muzzleZ - 0.12);
+}
+// player 2 always carries the same equipped gun ("same gun and everything")
+let gunModel2 = null;
+function applyGunVisual2() {
+  if (gunModel2) gunRig2.remove(gunModel2);
+  gunModel2 = buildGunModel(equippedGun);
+  gunRig2.add(gunModel2);
+  flash2.position.set(0, 0.02, gunModel2.userData.muzzleZ - 0.12);
+}
+
+// raycast one bullet from origin along dir, damaging whatever robot it hits first
+function resolveShot(origin, dir) {
+  raycaster.set(origin, dir);
+  // trees, the tower and walls block bullets — first thing hit wins
+  const hits = raycaster.intersectObjects(enemies.map(en => en.mesh).concat(worldSolids), true);
+  let len = 120;
+  if (hits.length) {
+    len = hits[0].distance;
+    const hitEnemy = hits[0].object.userData.enemy;
+    if (hitEnemy) damageEnemy(hitEnemy, equippedGun.dmg);
+  }
+  spawnTracer(origin, dir, 0xfff0b0, len);
+}
+
+const _aim = new THREE.Vector3();
+function shoot() {
+  if (state.reloading || state.ammo <= 0 || state.fireTimer > 0) return;
+  state.fireTimer = equippedGun.rate;
+  state.ammo--;
+  if (state.ammo === 0) { state.reloading = true; state.reloadLeft = equippedGun.reload; }
+  updateAmmoHUD();
+
+  playShot();
+  flashLife = 0.06;
+  flash.material.opacity = 1;
+  recoil = equippedGun.auto ? 0.08 : 0.16;
+  muzzle.position.copy(camera.position);
+  muzzle.intensity = 4;
+
+  // one ray per pellet (shotguns fire several with spread)
+  const forward = new THREE.Vector3();
+  camera.getWorldDirection(forward);
+  for (let p = 0; p < equippedGun.pellets; p++) {
+    _aim.copy(forward);
+    if (equippedGun.spread > 0) {
+      _aim.x += (Math.random() - 0.5) * equippedGun.spread * 2;
+      _aim.y += (Math.random() - 0.5) * equippedGun.spread * 2;
+      _aim.z += (Math.random() - 0.5) * equippedGun.spread * 2;
+      _aim.normalize();
+    }
+    resolveShot(camera.position, _aim);
+  }
+}
+
+// player 2 has no mouse — they aim by turning (Arrow Keys) and fire automatically
+// the instant a robot is in their crosshair, using the same gun stats/ammo/reload as player 1
+const _aim2 = new THREE.Vector3();
+const _fwd2 = new THREE.Vector3();
+function updateShootP2(dt) {
+  state2.fireTimer -= dt;
+  if (state2.reloading) {
+    state2.reloadLeft -= dt;
+    if (state2.reloadLeft <= 0) { state2.reloading = false; state2.ammo = equippedGun.mag; }
+    updateAmmoHUD2();
+    return;
+  }
+  if (state2.ammo <= 0 || state2.fireTimer > 0) return;
+
+  camera2.getWorldDirection(_fwd2);
+  raycaster.set(camera2.position, _fwd2);
+  const hits = raycaster.intersectObjects(enemies.map(en => en.mesh).concat(worldSolids), true);
+  if (!hits.length || !hits[0].object.userData.enemy) return; // nothing in their sights
+
+  state2.fireTimer = equippedGun.rate;
+  state2.ammo--;
+  if (state2.ammo === 0) { state2.reloading = true; state2.reloadLeft = equippedGun.reload; }
+  updateAmmoHUD2();
+
+  playShot();
+  flashLife2 = 0.06;
+  flash2.material.opacity = 1;
+  recoil2 = equippedGun.auto ? 0.08 : 0.16;
+  muzzle2.position.copy(camera2.position);
+  muzzle2.intensity = 4;
+
+  for (let p = 0; p < equippedGun.pellets; p++) {
+    _aim2.copy(_fwd2);
+    if (equippedGun.spread > 0) {
+      _aim2.x += (Math.random() - 0.5) * equippedGun.spread * 2;
+      _aim2.y += (Math.random() - 0.5) * equippedGun.spread * 2;
+      _aim2.z += (Math.random() - 0.5) * equippedGun.spread * 2;
+      _aim2.normalize();
+    }
+    resolveShot(camera2.position, _aim2);
+  }
+}
+
+const tracers = [];
+function spawnTracer(origin, dir, color = 0xfff0b0, len = 120) {
+  const end = origin.clone().add(dir.clone().multiplyScalar(len));
+  const g = new THREE.BufferGeometry().setFromPoints([origin.clone(), end]);
+  const line = new THREE.Line(g, new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.9 }));
+  scene.add(line);
+  tracers.push({ line, life: 0.08 });
+}
+function spawnBeam(from, to, color) {
+  const g = new THREE.BufferGeometry().setFromPoints([from.clone(), to.clone()]);
+  const line = new THREE.Line(g, new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.9 }));
+  scene.add(line);
+  tracers.push({ line, life: 0.08 });
+}
+
+// is the straight line a→b clear of every tree/block? Where the line passes over
+// an obstacle, it only counts as blocked if the line is below that obstacle's top —
+// so robots on the ground can still see (and shoot) a player up on the tower.
+function lineOfSight(ax, ay, az, bx, by, bz) {
+  for (const o of obstacles) {
+    const abx = bx - ax, abz = bz - az;
+    const len2 = abx * abx + abz * abz || 1;
+    let t = ((o.x - ax) * abx + (o.z - az) * abz) / len2;
+    t = Math.max(0, Math.min(1, t));
+    const cx = ax + abx * t, cz = az + abz * t;
+    if (Math.hypot(o.x - cx, o.z - cz) < o.radius) {
+      const yAt = ay + (by - ay) * t;
+      if (yAt < (o.top ?? Infinity)) return false;
+    }
+  }
+  return true;
+}
+
+// ---------- Enemies (articulated combat robots) ----------
+const enemies = [];
+const robotDark  = new THREE.MeshStandardMaterial({ color: 0x2a2d33, metalness: 0.6, roughness: 0.5 });
+const robotEye   = new THREE.MeshBasicMaterial({ color: 0xffff66 });
+const robotCore  = new THREE.MeshBasicMaterial({ color: 0x66d9ff });
+const robotPlate = new THREE.MeshStandardMaterial({ color: 0x8a8f96, metalness: 0.75, roughness: 0.3 });  // brushed-steel armor plating
+const robotJoint = new THREE.MeshStandardMaterial({ color: 0xd8dde2, metalness: 0.9,  roughness: 0.18 }); // chrome ball-and-socket joints
+
+function makeEnemy(x, z) {
+  const mat = new THREE.MeshStandardMaterial({ color: 0xc23b3b, metalness: 0.45, roughness: 0.55, emissive: 0x440000 });
+  const mesh = new THREE.Group();
+  mesh.position.set(x, 1.3, z);
+  scene.add(mesh);
+
+  const part = (geo, m, px, py, pz, rx = 0, ry = 0, rz = 0) => {
+    const p = new THREE.Mesh(geo, m);
+    p.position.set(px, py, pz);
+    p.rotation.set(rx, ry, rz);
+    mesh.add(p);
+    return p;
+  };
+
+  // torso: dark chassis under a plated chest armor, with a glowing power core and vents
+  part(new THREE.BoxGeometry(0.78, 0.9, 0.46), robotDark, 0, 0.05, 0);
+  part(new THREE.BoxGeometry(0.68, 0.5, 0.1), robotPlate, 0, 0.2, 0.24);          // chest armor plate
+  part(new THREE.BoxGeometry(0.46, 0.14, 0.08), mat, 0, -0.16, 0.25);             // accent trim
+  const core = part(new THREE.CylinderGeometry(0.11, 0.11, 0.06, 10), robotCore, 0, 0.12, 0.29);
+  core.rotation.x = Math.PI / 2;
+  part(new THREE.BoxGeometry(0.06, 0.06, 0.05), robotDark, -0.2, -0.02, 0.27);    // side vent
+  part(new THREE.BoxGeometry(0.06, 0.06, 0.05), robotDark,  0.2, -0.02, 0.27);    // side vent
+  part(new THREE.BoxGeometry(0.56, 0.16, 0.5), robotPlate, 0, 0.48, 0);           // shoulder yoke
+
+  // waist joint: dark pelvis block with a chrome axle bar showing through
+  part(new THREE.BoxGeometry(0.56, 0.14, 0.4), robotDark, 0, -0.46, 0);
+  part(new THREE.CylinderGeometry(0.07, 0.07, 0.52, 8), robotJoint, 0, -0.46, 0, 0, 0, Math.PI / 2);
+
+  // head: angular helm, glowing visor slit, side sensor, whip antenna
+  part(new THREE.BoxGeometry(0.44, 0.4, 0.42), robotPlate, 0, 0.78, 0);
+  part(new THREE.CylinderGeometry(0.12, 0.14, 0.08, 10), robotJoint, 0, 0.58, 0); // neck collar
+  part(new THREE.BoxGeometry(0.32, 0.07, 0.03), robotEye, 0, 0.8, 0.215);         // visor slit
+  part(new THREE.SphereGeometry(0.035, 8, 8), robotEye, -0.23, 0.86, 0.1);        // side sensor
+  part(new THREE.SphereGeometry(0.035, 8, 8), robotEye,  0.23, 0.86, 0.1);
+  part(new THREE.CylinderGeometry(0.018, 0.018, 0.3, 6), robotDark, 0.15, 1.1, 0);
+  part(new THREE.SphereGeometry(0.05, 8, 8), robotEye, 0.15, 1.27, 0);
+
+  // shoulders: chrome ball joints
+  part(new THREE.SphereGeometry(0.15, 10, 10), robotJoint, -0.55, 0.42, 0);
+  part(new THREE.SphereGeometry(0.15, 10, 10), robotJoint,  0.55, 0.42, 0);
+
+  // left arm hangs at rest: upper arm → elbow joint → forearm → hand
+  part(new THREE.BoxGeometry(0.17, 0.28, 0.17), mat, -0.55, 0.2, 0);
+  part(new THREE.SphereGeometry(0.08, 8, 8), robotJoint, -0.55, 0.03, 0);
+  part(new THREE.BoxGeometry(0.15, 0.28, 0.15), robotDark, -0.55, -0.15, 0);
+  part(new THREE.BoxGeometry(0.17, 0.1, 0.17), robotPlate, -0.55, -0.34, 0);
+
+  // right arm: raised and angled forward to the gun — upper arm → elbow joint → forearm
+  part(new THREE.BoxGeometry(0.17, 0.28, 0.17), mat, 0.55, 0.32, 0.1, 0.45);
+  part(new THREE.SphereGeometry(0.08, 8, 8), robotJoint, 0.55, 0.25, 0.27);
+  part(new THREE.BoxGeometry(0.15, 0.15, 0.55), robotDark, 0.55, 0.2, 0.25);
+
+  // legs: armored thigh → knee joint → shin → armored foot
+  for (const lx of [-0.22, 0.22]) {
+    part(new THREE.BoxGeometry(0.23, 0.34, 0.25), mat, lx, -0.7, 0);
+    part(new THREE.SphereGeometry(0.09, 8, 8), robotJoint, lx, -0.9, 0);
+    part(new THREE.BoxGeometry(0.19, 0.36, 0.21), robotDark, lx, -1.1, 0.02);
+    part(new THREE.BoxGeometry(0.26, 0.12, 0.4), robotPlate, lx, -1.3, 0.06);
+  }
+
+  // gun in the right hand, with its muzzle flash
+  const gun = part(new THREE.BoxGeometry(0.16, 0.16, 0.5), robotDark, 0.55, 0.2, 0.62);
+  const eFlash = new THREE.Mesh(
+    new THREE.SphereGeometry(0.16, 8, 8),
+    new THREE.MeshBasicMaterial({ color: 0xffe066, transparent: true, opacity: 0 })
+  );
+  eFlash.position.set(0, 0, 0.32);
+  gun.add(eFlash);
+
+  const enemy = {
+    mesh, mat, eFlash, hp: levelCfg.hp, alive: true,
+    speed: 1.5 + Math.random() * 1.8, hitFlash: 0,
+    shootCd: 1 + Math.random() * 2,            // time until first shot
+    strafeDir: Math.random() < 0.5 ? 1 : -1,   // sidestep direction
+    strafeCd: 1 + Math.random() * 2,
+  };
+  mesh.userData.enemy = enemy;
+  // every body part is shootable and casts a shadow
+  mesh.traverse(o => { if (o.isMesh) { o.castShadow = true; o.userData.enemy = enemy; } });
+  enemies.push(enemy);
+  return enemy;
+}
+
+function spawnWave() {
+  for (let i = 0; i < levelCfg.count; i++) {
+    let x, z;
+    do {
+      x = (Math.random() - 0.5) * ARENA * 1.7;
+      z = (Math.random() - 0.5) * ARENA * 1.7;
+    } while (Math.hypot(x - PLAYER_SPAWN.x, z - PLAYER_SPAWN.z) < 14 ||
+             Math.hypot(x, z) < 8); // keep away from spawn & tower
+    makeEnemy(x, z);
+  }
+}
+
+function damageEnemy(enemy, amount) {
+  if (!enemy.alive) return;
+  enemy.hp -= amount;
+  enemy.hitFlash = 0.12;
+  if (enemy.hp <= 0) killEnemy(enemy);
+}
+
+function killEnemy(enemy) {
+  enemy.alive = false;
+  scene.remove(enemy.mesh);
+  spawnCoin(enemy.mesh.position.x, enemy.mesh.position.z);
+  const i = enemies.indexOf(enemy);
+  if (i >= 0) enemies.splice(i, 1);
+  // each kill is worth less time pressure → re-evaluate timer target
+  recalcTimer();
+  updateHUD();
+}
+
+// ---------- Coins (gold disc with an S) ----------
+const coins = [];
+function makeSTexture() {
+  const c = document.createElement("canvas");
+  c.width = c.height = 128;
+  const ctx = c.getContext("2d");
+  const g = ctx.createRadialGradient(48, 40, 8, 64, 64, 64);
+  g.addColorStop(0, "#ffe98a");
+  g.addColorStop(0.6, "#f5b800");
+  g.addColorStop(1, "#b87800");
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(64, 64, 62, 0, Math.PI * 2); ctx.fill();
+  ctx.lineWidth = 6; ctx.strokeStyle = "#fff3c0";
+  ctx.beginPath(); ctx.arc(64, 64, 58, 0, Math.PI * 2); ctx.stroke();
+  ctx.fillStyle = "#8a5a00";
+  ctx.font = "bold 84px Georgia, serif";
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText("S", 64, 70);
+  const tex = new THREE.CanvasTexture(c);
+  tex.anisotropy = 4;
+  return tex;
+}
+const coinTex = makeSTexture();
+const coinGeo = new THREE.CylinderGeometry(0.5, 0.5, 0.12, 28);
+const coinSideMat = new THREE.MeshStandardMaterial({ color: 0xf5b800, metalness: 0.7, roughness: 0.3 });
+const coinFaceMat = new THREE.MeshStandardMaterial({ map: coinTex, metalness: 0.6, roughness: 0.25 });
+
+function spawnCoin(x, z) {
+  // cylinder: [side, top, bottom]
+  const mesh = new THREE.Mesh(coinGeo, [coinSideMat, coinFaceMat, coinFaceMat]);
+  mesh.position.set(x, 1.0, z);
+  mesh.rotation.x = Math.PI / 2; // face the player
+  mesh.castShadow = true;
+  scene.add(mesh);
+  const glow = new THREE.PointLight(0xffcc33, 1.2, 5);
+  glow.position.set(x, 1.0, z);
+  scene.add(glow);
+  coins.push({ mesh, glow, spin: Math.random() * Math.PI * 2, bob: Math.random() * Math.PI * 2 });
+}
+
+function collectCoins() {
+  for (let i = coins.length - 1; i >= 0; i--) {
+    const c = coins[i];
+    const d1 = Math.hypot(c.mesh.position.x - player.pos.x, c.mesh.position.z - player.pos.z);
+    const d2 = multiplayer && Math.hypot(c.mesh.position.x - player2.pos.x, c.mesh.position.z - player2.pos.z);
+    if (d1 < 1.6 || (d2 !== false && d2 < 1.6)) {
+      scene.remove(c.mesh); scene.remove(c.glow);
+      coins.splice(i, 1);
+      state.coins++;
+      updateHUD();
+    }
+  }
+}
+
+// ---------- Timer driven by enemy count ----------
+// Base time + bonus per living enemy. The fewer enemies remain, the less time you have.
+const TIME_PER_ENEMY = 3.0;
+const BASE_TIME = 15;
+function recalcTimer() {
+  const target = BASE_TIME + enemies.length * TIME_PER_ENEMY;
+  // never extend beyond what's left when there are fewer enemies; clamp down smoothly
+  state.timeLeft = Math.min(state.timeLeft, target);
+}
+
+// ---------- Levels ----------
+// Each level: more enemy health. Level 1 = robots stop to shoot (the original game);
+// level 2 and up they can move AND shoot at the same time.
+// Later levels trade the big horde for fewer — but far tougher — robots.
+const LEVELS = [
+  { hp: 3,  count: 26, moveAndShoot: false, accuracy: 0.50 }, // 1
+  { hp: 5,  count: 20, moveAndShoot: true,  accuracy: 0.50 }, // 2
+  { hp: 7,  count: 15, moveAndShoot: true,  accuracy: 0.60 }, // 3
+  { hp: 10, count: 10, moveAndShoot: true,  accuracy: 0.70 }, // 4
+];
+let currentLevel = 1;
+let levelCfg = LEVELS[0];
+
+// ---------- Guns / Shop ----------
+// auto = hold to fire; manual = one shot per click.
+// mag = bullets per magazine, dmg = damage per hit, reload = seconds,
+// rate = min seconds between shots, pellets = rays per shot (shotgun).
+// `model` picks the viewmodel shape (defaults to the gun's own id).
+// `zoom: "deep"` gives a tighter aim-down FOV; `scope: true` also swaps in the lens/reticle overlay.
+const GUNS = [
+  { id: "pistol",  name: "Pistol",        auto: false, mag: 12,  dmg: 1,  reload: 2.0, rate: 0.18,  pellets: 1,  spread: 0,     price: 0 },
+  { id: "smg",     name: "SMG",           auto: true,  mag: 30,  dmg: 1,  reload: 2.5, rate: 0.08,  pellets: 1,  spread: 0.01,  price: 35 },
+  { id: "uzi",     name: "Uzi",           auto: true,  mag: 20,  dmg: 1,  reload: 1.6, rate: 0.055, pellets: 1,  spread: 0.03,  price: 45,  model: "smg" },
+  { id: "deagle",  name: "Desert Eagle",  auto: false, mag: 9,   dmg: 2,  reload: 2.2, rate: 0.28,  pellets: 1,  spread: 0,     price: 50,  model: "pistol" },
+  { id: "shotgun", name: "Shotgun",       auto: false, mag: 6,   dmg: 1,  reload: 4.0, rate: 0.6,   pellets: 8,  spread: 0.07,  price: 60 },
+  { id: "magnum",  name: "Magnum",        auto: false, mag: 6,   dmg: 3,  reload: 3.0, rate: 0.4,   pellets: 1,  spread: 0,     price: 85 },
+  { id: "db",      name: "Double Barrel", auto: false, mag: 2,   dmg: 1,  reload: 2.6, rate: 0.45,  pellets: 12, spread: 0.1,   price: 95 },
+  { id: "rifle",   name: "Rifle",         auto: true,  mag: 25,  dmg: 2,  reload: 3.0, rate: 0.13,  pellets: 1,  spread: 0.005, price: 120 },
+  { id: "carbine", name: "Carbine",       auto: true,  mag: 30,  dmg: 2,  reload: 2.6, rate: 0.11,  pellets: 1,  spread: 0.008, price: 150, model: "rifle" },
+  { id: "lmg",     name: "LMG",           auto: true,  mag: 60,  dmg: 2,  reload: 4.5, rate: 0.09,  pellets: 1,  spread: 0.015, price: 190 },
+  { id: "minigun", name: "Minigun",       auto: true,  mag: 100, dmg: 1,  reload: 6.0, rate: 0.05,  pellets: 1,  spread: 0.02,  price: 220 },
+  { id: "railgun", name: "Railgun",       auto: false, mag: 3,   dmg: 12, reload: 4.0, rate: 1.1,   pellets: 1,  spread: 0,     price: 400, zoom: "deep" },
+  { id: "goldgun", name: "Golden Gun",    auto: false, mag: 1,   dmg: 25, reload: 2.2, rate: 0.5,   pellets: 1,  spread: 0,     price: 600, model: "pistol", gold: true },
+
+  // -- 30 more --
+  { id: "revolver",     name: "Revolver",          auto: false, mag: 6,   dmg: 2,  reload: 1.8, rate: 0.3,   pellets: 1,  spread: 0,     price: 40,   model: "magnum" },
+  { id: "snubnose",     name: "Snub Nose",         auto: false, mag: 5,   dmg: 2,  reload: 1.5, rate: 0.22,  pellets: 1,  spread: 0,     price: 25,   model: "pistol" },
+  { id: "boltpistol",   name: "Bolt Pistol",       auto: false, mag: 8,   dmg: 2,  reload: 1.9, rate: 0.25,  pellets: 1,  spread: 0,     price: 48,   model: "pistol" },
+  { id: "chainpistol",  name: "Chain Pistol",      auto: true,  mag: 24,  dmg: 1,  reload: 1.8, rate: 0.065, pellets: 1,  spread: 0.02,  price: 110,  model: "pistol" },
+  { id: "machinepistol",name: "Machine Pistol",    auto: true,  mag: 18,  dmg: 1,  reload: 1.4, rate: 0.07,  pellets: 1,  spread: 0.02,  price: 55,   model: "smg" },
+  { id: "nailgun",      name: "Nail Gun",          auto: true,  mag: 40,  dmg: 1,  reload: 2.0, rate: 0.09,  pellets: 1,  spread: 0.015, price: 65,   model: "smg" },
+  { id: "burstsmg",     name: "Burst SMG",         auto: true,  mag: 33,  dmg: 1,  reload: 2.2, rate: 0.07,  pellets: 1,  spread: 0.012, price: 130,  model: "smg" },
+  { id: "sawedoff",     name: "Sawed-Off",         auto: false, mag: 2,   dmg: 1,  reload: 2.2, rate: 0.5,   pellets: 14, spread: 0.12,  price: 70,   model: "db" },
+  { id: "riotgun",      name: "Riot Gun",          auto: false, mag: 7,   dmg: 1,  reload: 3.0, rate: 0.55,  pellets: 10, spread: 0.05,  price: 160,  model: "shotgun" },
+  { id: "combatshotgun",name: "Combat Shotgun",    auto: false, mag: 8,   dmg: 1,  reload: 3.2, rate: 0.5,   pellets: 9,  spread: 0.06,  price: 140,  model: "shotgun" },
+  { id: "autoshotgun",  name: "Auto Shotgun",      auto: true,  mag: 10,  dmg: 1,  reload: 3.6, rate: 0.35,  pellets: 6,  spread: 0.08,  price: 210,  model: "shotgun" },
+  { id: "battlerifle",  name: "Battle Rifle",      auto: true,  mag: 24,  dmg: 2,  reload: 2.8, rate: 0.12,  pellets: 1,  spread: 0.006, price: 170,  model: "rifle" },
+  { id: "compactcarbine",name: "Compact Carbine",  auto: true,  mag: 28,  dmg: 2,  reload: 2.4, rate: 0.1,   pellets: 1,  spread: 0.008, price: 180,  model: "rifle" },
+  { id: "marksman",     name: "Marksman Rifle",    auto: false, mag: 15,  dmg: 4,  reload: 2.4, rate: 0.35,  pellets: 1,  spread: 0,     price: 230,  model: "rifle", zoom: "deep", scope: true },
+  { id: "assaultlmg",   name: "Assault LMG",       auto: true,  mag: 75,  dmg: 2,  reload: 4.8, rate: 0.085, pellets: 1,  spread: 0.016, price: 280,  model: "lmg" },
+  { id: "warhammer",    name: "War Hammer",        auto: true,  mag: 80,  dmg: 3,  reload: 5.2, rate: 0.08,  pellets: 1,  spread: 0.018, price: 520,  model: "lmg" },
+  { id: "annihilator",  name: "The Annihilator",   auto: true,  mag: 120, dmg: 4,  reload: 5.5, rate: 0.06,  pellets: 1,  spread: 0.014, price: 2500, model: "lmg" },
+  { id: "gatlingpistol",name: "Gatling Pistol",    auto: true,  mag: 40,  dmg: 1,  reload: 2.6, rate: 0.045, pellets: 1,  spread: 0.025, price: 260,  model: "minigun" },
+  { id: "vulcan",       name: "Vulcan Cannon",     auto: true,  mag: 150, dmg: 1,  reload: 7.0, rate: 0.04,  pellets: 1,  spread: 0.022, price: 480,  model: "minigun" },
+  { id: "devastator",   name: "Devastator Minigun",auto: true,  mag: 200, dmg: 2,  reload: 8.0, rate: 0.035, pellets: 1,  spread: 0.025, price: 1500, model: "minigun" },
+  { id: "boltaction",   name: "Bolt-Action Rifle", auto: false, mag: 4,   dmg: 9,  reload: 2.8, rate: 1.0,   pellets: 1,  spread: 0,     price: 350,  model: "sniper", zoom: "deep", scope: true },
+  { id: "autosniper",   name: "Auto Sniper",       auto: false, mag: 8,   dmg: 6,  reload: 2.6, rate: 0.4,   pellets: 1,  spread: 0,     price: 460,  model: "sniper", zoom: "deep", scope: true },
+  { id: "antimateriel", name: "Anti-Materiel Rifle",auto: false,mag: 5,   dmg: 20, reload: 3.6, rate: 1.3,   pellets: 1,  spread: 0,     price: 900,  model: "sniper", zoom: "deep", scope: true },
+  { id: "ioncannon",    name: "Ion Cannon",        auto: false, mag: 4,   dmg: 14, reload: 4.2, rate: 1.0,   pellets: 1,  spread: 0,     price: 620,  model: "railgun", zoom: "deep" },
+  { id: "vortexrailgun",name: "Vortex Railgun",    auto: false, mag: 4,   dmg: 16, reload: 4.4, rate: 1.0,   pellets: 1,  spread: 0,     price: 2000, model: "railgun", zoom: "deep" },
+  { id: "plasmarifle",  name: "Plasma Rifle",      auto: true,  mag: 20,  dmg: 3,  reload: 3.4, rate: 0.16,  pellets: 1,  spread: 0.01,  price: 560,  model: "plasma" },
+  { id: "plasmacannon", name: "Plasma Cannon",     auto: true,  mag: 15,  dmg: 5,  reload: 4.0, rate: 0.2,   pellets: 1,  spread: 0.012, price: 1300, model: "plasma" },
+  { id: "crossbow",     name: "Crossbow",          auto: false, mag: 1,   dmg: 6,  reload: 1.4, rate: 0.7,   pellets: 1,  spread: 0,     price: 300,  model: "crossbow" },
+  { id: "rocketlauncher",name: "Rocket Launcher",  auto: false, mag: 1,   dmg: 30, reload: 3.0, rate: 1.2,   pellets: 1,  spread: 0,     price: 1100, model: "rocket" },
+  { id: "rpg9",         name: "RPG-9",             auto: false, mag: 2,   dmg: 22, reload: 3.6, rate: 1.0,   pellets: 1,  spread: 0,     price: 950,  model: "rocket" },
+
+  // not sold in the shop — found on top of the tower, one run at a time
+  { id: "sniper",  name: "Sniper",        auto: false, mag: 5,   dmg: 8,  reload: 3.0, rate: 0.9,   pellets: 1,  spread: 0,     price: 0,   hidden: true, zoom: "deep", scope: true },
+];
+const gunById = id => GUNS.find(g => g.id === id);
+
+// persistent progress (survives reloads via localStorage)
+const SAVE_KEY = "shooty_save_v1";
+function loadSave() {
+  try {
+    const s = JSON.parse(localStorage.getItem(SAVE_KEY));
+    if (s && typeof s.wallet === "number") return s;
+  } catch {}
+  return { wallet: 0, owned: ["pistol"], equipped: "pistol" };
+}
+const save = loadSave();
+if (!save.owned.includes("pistol")) save.owned.push("pistol");
+function persist() { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); }
+let equippedGun = gunById(save.equipped) || GUNS[0];
+
+// ---------- Game state ----------
+const MAX_HEARTS = 8;        // 8 hearts
+const HIT_DAMAGE = 0.25;     // each robot hit = 1/4 heart
+const state = {
+  running: false, coins: 0, timeLeft: 0,
+  health: MAX_HEARTS, ammo: 0, reloading: false, reloadLeft: 0, fireTimer: 0,
+};
+// player 2's own health/ammo/reload — independent trigger, but always the same equipped gun
+const state2 = {
+  health: MAX_HEARTS, ammo: 0, reloading: false, reloadLeft: 0, fireTimer: 0,
+};
+
+const coinCountEl = document.getElementById("coinCount");
+const timerEl = document.getElementById("timer");
+const enemiesEl = document.getElementById("enemies");
+const ammoEl = document.getElementById("ammo");
+const ammoEl2 = document.getElementById("ammo2");
+const heartsEl = document.getElementById("hearts");
+const hearts2El = document.getElementById("hearts2");
+const dmgFlashEl = document.getElementById("dmgFlash");
+const crossEl = document.getElementById("cross");
+const scopeOverlayEl = document.getElementById("scopeOverlay");
+
+// build the heart slots once, for both players
+const heartFgs = [];
+const heartFgs2 = [];
+for (let i = 0; i < MAX_HEARTS; i++) {
+  const h = document.createElement("div");
+  h.className = "heart";
+  h.innerHTML = '<span class="base">♥</span><span class="fg">♥</span>';
+  heartsEl.appendChild(h);
+  heartFgs.push(h.querySelector(".fg"));
+
+  const h2 = document.createElement("div");
+  h2.className = "heart";
+  h2.innerHTML = '<span class="base">♥</span><span class="fg">♥</span>';
+  hearts2El.appendChild(h2);
+  heartFgs2.push(h2.querySelector(".fg"));
+}
+function updateHearts() {
+  for (let i = 0; i < MAX_HEARTS; i++) {
+    const frac = Math.max(0, Math.min(1, state.health - i)); // 0..1 fill for this heart
+    heartFgs[i].style.clipPath = `inset(0 ${(1 - frac) * 100}% 0 0)`;
+  }
+}
+function updateHearts2() {
+  for (let i = 0; i < MAX_HEARTS; i++) {
+    const frac = Math.max(0, Math.min(1, state2.health - i));
+    heartFgs2[i].style.clipPath = `inset(0 ${(1 - frac) * 100}% 0 0)`;
+  }
+}
+
+function updateHUD() {
+  coinCountEl.textContent = state.coins;
+  enemiesEl.textContent = "Lv " + currentLevel + " · Enemies: " + enemies.length;
+  timerEl.textContent = state.timeLeft.toFixed(1);
+  timerEl.classList.toggle("low", state.timeLeft <= 5);
+  updateAmmoHUD();
+  updateHearts();
+  if (multiplayer) { updateAmmoHUD2(); updateHearts2(); }
+}
+function updateAmmoHUD() {
+  if (state.reloading) {
+    ammoEl.textContent = equippedGun.name.toUpperCase() + " · RELOADING " + state.reloadLeft.toFixed(1) + "s";
+    ammoEl.className = "stat reloading";
+  } else {
+    ammoEl.textContent = equippedGun.name.toUpperCase() + " · " + state.ammo + " / " + equippedGun.mag;
+    ammoEl.className = "stat" + (state.ammo === 0 ? " empty" : "");
+  }
+}
+function updateAmmoHUD2() {
+  if (state2.reloading) {
+    ammoEl2.textContent = equippedGun.name.toUpperCase() + " · RELOADING " + state2.reloadLeft.toFixed(1) + "s";
+    ammoEl2.className = "stat mpOnly reloading";
+  } else {
+    ammoEl2.textContent = equippedGun.name.toUpperCase() + " · " + state2.ammo + " / " + equippedGun.mag;
+    ammoEl2.className = "stat mpOnly" + (state2.ammo === 0 ? " empty" : "");
+  }
+}
+
+// start a reload (manual via R, or automatically when the mag runs dry)
+function reload() {
+  if (state.reloading || state.ammo === equippedGun.mag) return;
+  state.reloading = true;
+  state.reloadLeft = equippedGun.reload;
+  updateAmmoHUD();
+}
+addEventListener("keydown", e => {
+  if (e.code === "KeyR" && state.running) reload();
+  if (e.code === "KeyO" && state.running) scoped = !scoped;
+});
+
+// player takes a quarter-heart hit
+function takeDamage(amount) {
+  state.health = Math.max(0, state.health - amount);
+  updateHearts();
+  dmgFlashEl.style.opacity = "1";
+  setTimeout(() => { dmgFlashEl.style.opacity = "0"; }, 90);
+  if (state.health <= 0) endGame("dead");
+}
+function takeDamage2(amount) {
+  state2.health = Math.max(0, state2.health - amount);
+  updateHearts2();
+  dmgFlashEl.style.opacity = "1";
+  setTimeout(() => { dmgFlashEl.style.opacity = "0"; }, 90);
+  if (state2.health <= 0) endGame("dead");
+}
+
+function resetGame() {
+  // clear old entities
+  enemies.splice(0).forEach(e => scene.remove(e.mesh));
+  coins.splice(0).forEach(c => { scene.remove(c.mesh); scene.remove(c.glow); });
+  tracers.splice(0).forEach(t => scene.remove(t.line));
+
+  state.coins = 0;
+  state.health = MAX_HEARTS;
+  equippedGun = gunById(save.equipped) || GUNS[0]; // the tower sniper only lasts one run
+  sniperTaken = false;
+  sniperPickup.visible = true;
+  spawnChests();
+  state.ammo = equippedGun.mag;
+  state.reloading = false;
+  state.reloadLeft = 0;
+  state.fireTimer = 0;
+  scoped = false;
+  applyGunVisual();
+  player.pos.copy(PLAYER_SPAWN);
+  player.vel.set(0, 0, 0);
+  player.yaw = 0; player.pitch = 0;
+
+  // player 2 spawns beside player 1, carrying an identical copy of the equipped gun
+  state2.health = MAX_HEARTS;
+  state2.ammo = equippedGun.mag;
+  state2.reloading = false;
+  state2.reloadLeft = 0;
+  state2.fireTimer = 0;
+  applyGunVisual2();
+  player2.pos.copy(PLAYER_SPAWN).add(new THREE.Vector3(3, 0, 0));
+  player2.vel.set(0, 0, 0);
+  player2.yaw = 0; player2.pitch = 0;
+  document.body.classList.toggle("mp", multiplayer);
+
+  spawnWave();
+  state.timeLeft = BASE_TIME + enemies.length * TIME_PER_ENEMY;
+  updateHUD();
+}
+
+function startGame(level) {
+  currentLevel = level;
+  levelCfg = LEVELS[level - 1];
+  multiplayer = document.getElementById("coopToggle").checked;
+  ensureAudio();
+  resetGame();
+  mouseDown = false;
+  state.running = true;
+  document.getElementById("startScreen").classList.add("hidden");
+  document.getElementById("endScreen").classList.add("hidden");
+  canvas.requestPointerLock();
+}
+
+function endGame(cause) {
+  if (!state.running) return;
+  state.running = false;
+  mouseDown = false;
+  document.exitPointerLock?.();
+
+  // banked coins carry over and add to the persistent wallet
+  save.wallet += state.coins;
+  persist();
+  refreshWalletUI();
+
+  document.getElementById("finalScore").textContent =
+    `+${state.coins} S-coin${state.coins === 1 ? "" : "s"}  ·  wallet: ${save.wallet}`;
+  const left = enemies.length;
+  let title, msg;
+  if (cause === "dead") {
+    title = "YOU DIED";
+    msg = multiplayer
+      ? "The robots gunned down your squad. Use the trees for cover next time."
+      : "The robots gunned you down. Use the trees for cover next time.";
+  } else if (left === 0) {
+    title = "ARENA CLEARED!";
+    msg = "You wiped out every robot. Nice shooting.";
+  } else {
+    title = "TIME!";
+    msg = `${left} robot${left === 1 ? "" : "s"} still standing. Be faster next time.`;
+  }
+  document.getElementById("endTitle").textContent = title;
+  document.getElementById("endMsg").textContent = msg;
+  document.getElementById("endScreen").classList.remove("hidden");
+}
+
+document.querySelectorAll(".lvlBtn").forEach(b =>
+  b.onclick = () => startGame(parseInt(b.dataset.level, 10)));
+document.getElementById("againBtn").onclick = () => startGame(currentLevel);
+document.getElementById("menuBtn").onclick = () => {
+  document.getElementById("endScreen").classList.add("hidden");
+  document.getElementById("startScreen").classList.remove("hidden");
+};
+
+// ---------- Shop ----------
+const walletTitleEl = document.getElementById("walletTitle");
+const walletShopEl = document.getElementById("walletShop");
+const shopListEl = document.getElementById("shopList");
+function refreshWalletUI() {
+  walletTitleEl.textContent = save.wallet;
+  walletShopEl.textContent = save.wallet;
+}
+function renderShop() {
+  shopListEl.innerHTML = "";
+  for (const g of GUNS) {
+    if (g.hidden) continue;
+    const owned = save.owned.includes(g.id);
+    const equipped = save.equipped === g.id;
+    const card = document.createElement("div");
+    card.className = "gun" + (equipped ? " equipped" : "");
+    card.innerHTML = `
+      <div class="top">
+        <span class="gname">${g.name}</span>
+        <span class="tag ${g.auto ? "auto" : "manual"}">${g.auto ? "AUTO" : "MANUAL"}</span>
+      </div>
+      <div class="stats">
+        Damage <b>${g.dmg}</b>${g.pellets > 1 ? ` ×${g.pellets}` : ""} &nbsp;·&nbsp; Mag <b>${g.mag}</b><br>
+        Reload <b>${g.reload}s</b> &nbsp;·&nbsp; Fire rate <b>${(1 / g.rate).toFixed(1)}/s</b>
+      </div>`;
+    const btn = document.createElement("button");
+    if (equipped) {
+      btn.textContent = "EQUIPPED"; btn.className = "owned"; btn.disabled = true;
+    } else if (owned) {
+      btn.textContent = "EQUIP"; btn.className = "equip";
+      btn.onclick = () => { equipGun(g.id); };
+    } else {
+      const afford = save.wallet >= g.price;
+      btn.textContent = `BUY · ${g.price} S`;
+      btn.disabled = !afford;
+      btn.onclick = () => { buyGun(g.id); };
+    }
+    card.appendChild(btn);
+    shopListEl.appendChild(card);
+  }
+}
+function buyGun(id) {
+  const g = gunById(id);
+  if (save.owned.includes(id) || save.wallet < g.price) return;
+  save.wallet -= g.price;
+  save.owned.push(id);
+  save.equipped = id;            // auto-equip what you just bought
+  equippedGun = g;
+  persist(); refreshWalletUI(); renderShop();
+}
+function equipGun(id) {
+  if (!save.owned.includes(id)) return;
+  save.equipped = id;
+  equippedGun = gunById(id);
+  persist(); renderShop();
+}
+function openShop() {
+  renderShop(); refreshWalletUI();
+  document.getElementById("startScreen").classList.add("hidden");
+  document.getElementById("shopScreen").classList.remove("hidden");
+}
+document.getElementById("shopBtn").onclick = openShop;
+document.getElementById("shopBack").onclick = () => {
+  document.getElementById("shopScreen").classList.add("hidden");
+  document.getElementById("startScreen").classList.remove("hidden");
+};
+refreshWalletUI();
+
+// ---------- Main-menu artwork: guns aiming at a giant S-coin, robots in the corners ----------
+function drawGunSilhouette(ctx, x, y, ang, s, long) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(ang);
+  ctx.fillStyle = "#20242e";
+  ctx.strokeStyle = "#4a5468";
+  ctx.lineWidth = 2;
+  const L = long ? s * 1.5 : s;
+  ctx.beginPath();
+  ctx.rect(-L * 0.55, -s * 0.13, L * 0.5, s * 0.26);   // receiver / stock
+  ctx.rect(-L * 0.05, -s * 0.08, L * 0.75, s * 0.16);  // barrel (points at the coin)
+  ctx.rect(-L * 0.45, s * 0.05, s * 0.14, s * 0.32);   // grip
+  if (long) ctx.rect(-L * 0.2, s * 0.06, s * 0.13, s * 0.3); // magazine
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+function drawRobotFace(ctx, x, y, s, ang) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(ang);
+  ctx.fillStyle = "#c23b3b";
+  ctx.strokeStyle = "#7a2020";
+  ctx.lineWidth = 3;
+  ctx.fillRect(-s / 2, -s / 2, s, s);
+  ctx.strokeRect(-s / 2, -s / 2, s, s);
+  ctx.fillStyle = "#ffee66";
+  ctx.fillRect(-s * 0.3, -s * 0.15, s * 0.2, s * 0.14);  // eyes
+  ctx.fillRect( s * 0.1, -s * 0.15, s * 0.2, s * 0.14);
+  ctx.fillStyle = "#5a1515";
+  for (let i = 0; i < 3; i++) ctx.fillRect(-s * 0.25 + i * s * 0.18, s * 0.18, s * 0.12, s * 0.1); // grill
+  ctx.strokeStyle = "#333";
+  ctx.lineWidth = s * 0.05;
+  ctx.beginPath(); ctx.moveTo(s * 0.25, -s * 0.5); ctx.lineTo(s * 0.32, -s * 0.75); ctx.stroke();
+  ctx.fillStyle = "#ffee66";
+  ctx.beginPath(); ctx.arc(s * 0.33, -s * 0.78, s * 0.07, 0, Math.PI * 2); ctx.fill(); // antenna tip
+  ctx.restore();
+}
+function drawMenuArt() {
+  const c = document.getElementById("menuArt");
+  const dpr = Math.min(devicePixelRatio, 2);
+  c.width = innerWidth * dpr;
+  c.height = innerHeight * dpr;
+  const ctx = c.getContext("2d");
+  ctx.scale(dpr, dpr);
+  const w = innerWidth, h = innerHeight, cx = w / 2, cy = h / 2;
+
+  const bg = ctx.createRadialGradient(cx, cy, 80, cx, cy, Math.max(w, h) * 0.7);
+  bg.addColorStop(0, "#232346");
+  bg.addColorStop(1, "#05050c");
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, w, h);
+
+  // giant S-coin with a soft glow
+  const R = Math.min(w, h) * 0.3;
+  ctx.save();
+  ctx.shadowColor = "rgba(255, 204, 51, .55)";
+  ctx.shadowBlur = R * 0.5;
+  const g1 = ctx.createRadialGradient(cx - R * 0.3, cy - R * 0.35, R * 0.1, cx, cy, R);
+  g1.addColorStop(0, "#ffe98a");
+  g1.addColorStop(0.6, "#f5b800");
+  g1.addColorStop(1, "#a86e00");
+  ctx.fillStyle = g1;
+  ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+  ctx.lineWidth = R * 0.05;
+  ctx.strokeStyle = "#fff3c0";
+  ctx.beginPath(); ctx.arc(cx, cy, R * 0.92, 0, Math.PI * 2); ctx.stroke();
+  ctx.fillStyle = "#8a5a00";
+  ctx.font = `900 ${R * 1.3}px Georgia, serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("S", cx, cy + R * 0.05);
+
+  // ring of guns, every barrel trained on the coin
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2 + Math.PI / 8;
+    drawGunSilhouette(ctx, cx + Math.cos(a) * R * 1.75, cy + Math.sin(a) * R * 1.75,
+                      a + Math.PI, R * 0.5, i % 2 === 0);
+  }
+
+  // robots peeking in from the corners, tilted toward the middle
+  const m = Math.min(w, h) * 0.13;
+  drawRobotFace(ctx, m, m, m * 0.8, 0.3);
+  drawRobotFace(ctx, w - m, m, m * 0.8, -0.3);
+  drawRobotFace(ctx, m, h - m, m * 0.8, -0.3);
+  drawRobotFace(ctx, w - m, h - m, m * 0.8, 0.3);
+}
+drawMenuArt();
+
+// ---------- Collision against arena bounds & blocks ----------
+function clampToArena(p) {
+  const lim = ARENA - 1.2;
+  p.x = Math.max(-lim, Math.min(lim, p.x));
+  p.z = Math.max(-lim, Math.min(lim, p.z));
+}
+
+// ---------- Main loop ----------
+const clock = new THREE.Clock();
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.05);
+
+  if (state.running) {
+    updatePlayer(dt);
+    if (multiplayer) { updatePlayer2(dt); updateShootP2(dt); }
+    updateEnemies(dt);
+    updateCoins(dt);
+    collectCoins();
+    updateChests(dt);
+    updateSniperPickup(dt, clock.elapsedTime);
+
+    // automatic fire: hold the button to keep shooting
+    state.fireTimer -= dt;
+    if (equippedGun.auto && mouseDown && !state.reloading && state.ammo > 0) shoot();
+
+    // reload countdown
+    if (state.reloading) {
+      state.reloadLeft -= dt;
+      if (state.reloadLeft <= 0) {
+        state.reloading = false;
+        state.ammo = equippedGun.mag;
+      }
+      updateAmmoHUD();
+    }
+
+    state.timeLeft -= dt;
+    if (state.timeLeft <= 0 || enemies.length === 0) {
+      state.timeLeft = Math.max(0, state.timeLeft);
+      updateHUD();
+      endGame();
+    } else {
+      // light HUD refresh for timer each frame
+      timerEl.textContent = state.timeLeft.toFixed(1);
+      timerEl.classList.toggle("low", state.timeLeft <= 5);
+    }
+  }
+
+  // tracers fade
+  for (let i = tracers.length - 1; i >= 0; i--) {
+    tracers[i].life -= dt;
+    tracers[i].line.material.opacity = Math.max(0, tracers[i].life / 0.08) * 0.9;
+    if (tracers[i].life <= 0) { scene.remove(tracers[i].line); tracers.splice(i, 1); }
+  }
+  muzzle.intensity *= 0.8;
+
+  // muzzle flash fade + pistol recoil kick
+  if (flashLife > 0) {
+    flashLife -= dt;
+    flash.material.opacity = Math.max(0, flashLife / 0.06);
+    flash.scale.setScalar(0.8 + Math.random() * 0.7);
+  } else {
+    flash.material.opacity = 0;
+  }
+  recoil *= 0.82;
+  gunRig.position.z = GUN_Z + recoil;
+  gunRig.rotation.x = recoil * 0.9;
+
+  // scope: zoom eases in/out, and the gun tucks toward center while aiming
+  const targetFov = scoped ? (equippedGun.zoom === "deep" ? 20 : 45) : 75;
+  if (Math.abs(camera.fov - targetFov) > 0.01) {
+    camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 12);
+    camera.updateProjectionMatrix();
+  }
+  gunRig.position.x += ((scoped ? 0.1 : 0.34) - gunRig.position.x) * Math.min(1, dt * 10);
+  gunRig.position.y += ((scoped ? -0.4 : -0.5) - gunRig.position.y) * Math.min(1, dt * 10);
+
+  // true optical scopes swap the crosshair for a proper lens overlay + reticle while aiming
+  const showScope = scoped && equippedGun.scope;
+  scopeOverlayEl.classList.toggle("active", showScope);
+  crossEl.classList.toggle("hideForScope", showScope);
+
+  // player 2's muzzle flash + recoil (no scope/ADS — they always fire from the hip)
+  muzzle2.intensity *= 0.8;
+  if (flashLife2 > 0) {
+    flashLife2 -= dt;
+    flash2.material.opacity = Math.max(0, flashLife2 / 0.06);
+    flash2.scale.setScalar(0.8 + Math.random() * 0.7);
+  } else {
+    flash2.material.opacity = 0;
+  }
+  recoil2 *= 0.82;
+  gunRig2.position.z = GUN_Z + recoil2;
+  gunRig2.rotation.x = recoil2 * 0.9;
+
+  if (multiplayer) {
+    // split screen: player 1 renders to the left half, player 2 to the right half
+    const halfW = Math.floor(innerWidth / 2);
+    camera.aspect = halfW / innerHeight;
+    camera.updateProjectionMatrix();
+    camera2.aspect = halfW / innerHeight;
+    camera2.updateProjectionMatrix();
+
+    renderer.setScissorTest(true);
+    renderer.setViewport(0, 0, halfW, innerHeight);
+    renderer.setScissor(0, 0, halfW, innerHeight);
+    renderer.render(scene, camera);
+
+    renderer.setViewport(halfW, 0, innerWidth - halfW, innerHeight);
+    renderer.setScissor(halfW, 0, innerWidth - halfW, innerHeight);
+    renderer.render(scene, camera2);
+
+    renderer.setScissorTest(false);
+  } else {
+    camera.aspect = innerWidth / innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.render(scene, camera);
+  }
+}
+
+function updatePlayer(dt) {
+  // camera orientation
+  const euler = new THREE.Euler(player.pitch, player.yaw, 0, "YXZ");
+  camera.quaternion.setFromEuler(euler);
+
+  // movement relative to yaw
+  const forward = new THREE.Vector3(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
+  const right = new THREE.Vector3(Math.cos(player.yaw), 0, -Math.sin(player.yaw));
+  const move = new THREE.Vector3();
+  if (keys["KeyW"]) move.add(forward);
+  if (keys["KeyS"]) move.sub(forward);
+  if (keys["KeyD"]) move.add(right);
+  if (keys["KeyA"]) move.sub(right);
+  move.y = 0;
+  if (move.lengthSq() > 0) move.normalize();
+
+  const sp = keys["ShiftLeft"] || keys["ShiftRight"] ? player.sprint : player.speed;
+  player.pos.x += move.x * sp * dt;
+  player.pos.z += move.z * sp * dt;
+
+  // jump + gravity
+  if (keys["Space"] && player.onGround) { player.vel.y = 7; player.onGround = false; }
+  player.vel.y -= 20 * dt;
+  player.pos.y += player.vel.y * dt;
+
+  // stand on the highest block under the player (with a small auto-step up), else the grass
+  let groundY = 0;
+  const feet = player.pos.y - 1.7;
+  for (const pf of platforms) {
+    if (player.pos.x > pf.minX - 0.3 && player.pos.x < pf.maxX + 0.3 &&
+        player.pos.z > pf.minZ - 0.3 && player.pos.z < pf.maxZ + 0.3 &&
+        pf.top > groundY && pf.top <= feet + 0.6) groundY = pf.top;
+  }
+  if (player.pos.y <= groundY + 1.7) {
+    player.pos.y = groundY + 1.7; player.vel.y = 0; player.onGround = true;
+  } else {
+    player.onGround = false;
+  }
+
+  resolveObstacles(player.pos, 0.6, player.pos.y - 1.7);
+  clampToArena(player.pos);
+  camera.position.copy(player.pos);
+}
+
+// player 2: Arrow Keys only — Up/Down walk forward/back, Left/Right turn to aim
+function updatePlayer2(dt) {
+  if (keys["ArrowLeft"])  player2.yaw += player2.turnSpeed * dt;
+  if (keys["ArrowRight"]) player2.yaw -= player2.turnSpeed * dt;
+
+  const euler = new THREE.Euler(player2.pitch, player2.yaw, 0, "YXZ");
+  camera2.quaternion.setFromEuler(euler);
+
+  const forward = new THREE.Vector3(-Math.sin(player2.yaw), 0, -Math.cos(player2.yaw));
+  const move = new THREE.Vector3();
+  if (keys["ArrowUp"]) move.add(forward);
+  if (keys["ArrowDown"]) move.sub(forward);
+  if (move.lengthSq() > 0) move.normalize();
+
+  player2.pos.x += move.x * player2.speed * dt;
+  player2.pos.z += move.z * player2.speed * dt;
+
+  player2.vel.y -= 20 * dt;
+  player2.pos.y += player2.vel.y * dt;
+
+  // stand on the highest block under them, same auto-step rule as player 1
+  let groundY2 = 0;
+  const feet2 = player2.pos.y - 1.7;
+  for (const pf of platforms) {
+    if (player2.pos.x > pf.minX - 0.3 && player2.pos.x < pf.maxX + 0.3 &&
+        player2.pos.z > pf.minZ - 0.3 && player2.pos.z < pf.maxZ + 0.3 &&
+        pf.top > groundY2 && pf.top <= feet2 + 0.6) groundY2 = pf.top;
+  }
+  if (player2.pos.y <= groundY2 + 1.7) {
+    player2.pos.y = groundY2 + 1.7; player2.vel.y = 0; player2.onGround = true;
+  } else {
+    player2.onGround = false;
+  }
+
+  resolveObstacles(player2.pos, 0.6, player2.pos.y - 1.7);
+  clampToArena(player2.pos);
+  camera2.position.copy(player2.pos);
+}
+
+const SHOOT_RANGE = 32;      // robots open fire within this distance
+const KEEP_DIST = 13;        // distance they try to hold while strafing
+// in co-op, each robot picks whichever player is closer to shoot at
+function pickTarget(e) {
+  if (!multiplayer) return player;
+  const d1 = Math.hypot(player.pos.x - e.mesh.position.x, player.pos.z - e.mesh.position.z);
+  const d2 = Math.hypot(player2.pos.x - e.mesh.position.x, player2.pos.z - e.mesh.position.z);
+  return d2 < d1 ? player2 : player;
+}
+function updateEnemies(dt) {
+  for (const e of enemies) {
+    // hit flash (white when you hit them)
+    if (e.hitFlash > 0) {
+      e.hitFlash -= dt;
+      e.mat.emissive.setHex(0xffffff);
+    } else {
+      e.mat.emissive.setHex(0x440000);
+    }
+    // fade their muzzle flash
+    if (e.eFlash.material.opacity > 0) {
+      e.eFlash.material.opacity = Math.max(0, e.eFlash.material.opacity - dt * 12);
+    }
+
+    const target = pickTarget(e);
+    const dx = target.pos.x - e.mesh.position.x;
+    const dz = target.pos.z - e.mesh.position.z;
+    const d = Math.hypot(dx, dz) || 1;
+    e.mesh.lookAt(target.pos.x, e.mesh.position.y, target.pos.z);
+
+    const canSee = lineOfSight(e.mesh.position.x, 1.8, e.mesh.position.z,
+                               target.pos.x, target.pos.y, target.pos.z);
+    const inRange = d < SHOOT_RANGE && canSee;
+
+    // shooting (any level can fire when it has a clear shot)
+    if (inRange) {
+      e.shootCd -= dt;
+      if (e.shootCd <= 0) {
+        e.shootCd = 1.2 + Math.random() * 1.6; // fire roughly every 1.2–2.8s
+        enemyFire(e, d, target);
+      }
+    }
+
+    // movement
+    if (inRange && !levelCfg.moveAndShoot) {
+      // Level 1: hold still while in range and shooting
+    } else if (inRange && levelCfg.moveAndShoot) {
+      // Level 2+: keep moving while firing — hold range and strafe sideways
+      e.strafeCd -= dt;
+      if (e.strafeCd <= 0) { e.strafeDir *= -1; e.strafeCd = 1.5 + Math.random() * 2; }
+      const nx = dx / d, nz = dz / d;
+      const towards = d > KEEP_DIST ? 1 : (d < KEEP_DIST - 4 ? -1 : 0);
+      let mvx = nx * towards + (-nz) * e.strafeDir * 0.9;
+      let mvz = nz * towards + ( nx) * e.strafeDir * 0.9;
+      const len = Math.hypot(mvx, mvz) || 1;
+      e.mesh.position.x += (mvx / len) * e.speed * dt;
+      e.mesh.position.z += (mvz / len) * e.speed * dt;
+    } else {
+      // no clear shot → advance toward the target
+      e.mesh.position.x += (dx / d) * e.speed * dt;
+      e.mesh.position.z += (dz / d) * e.speed * dt;
+    }
+
+    resolveObstacles(e.mesh.position, 0.7);
+    clampToArena(e.mesh.position);
+  }
+}
+
+const _gunTip = new THREE.Vector3();
+const _aimPoint = new THREE.Vector3();
+function enemyFire(e, dist, target) {
+  // muzzle flash on the robot's gun
+  e.eFlash.material.opacity = 1;
+  playEnemyShot(dist);
+  // red tracer from the robot's gun toward the target's chest
+  e.eFlash.getWorldPosition(_gunTip);
+  _aimPoint.set(target.pos.x, target.pos.y - 0.2, target.pos.z);
+  spawnBeam(_gunTip, _aimPoint, 0xff5a3c);
+  // roll to hit — accuracy (set per level) drops off with distance,
+  // and shooting upward at a high perch is harder
+  const height = Math.max(0, target.pos.y - 1.7);
+  const chance = levelCfg.accuracy * (1 - dist / (SHOOT_RANGE * 1.4)) *
+                 Math.max(0.35, 1 - height * 0.06);
+  if (Math.random() < chance) (target === player2 ? takeDamage2 : takeDamage)(HIT_DAMAGE);
+}
+
+function updateCoins(dt) {
+  for (const c of coins) {
+    c.spin += dt * 3;
+    c.bob += dt * 2.5;
+    c.mesh.rotation.y = c.spin;
+    c.mesh.position.y = 1.0 + Math.sin(c.bob) * 0.15;
+    c.glow.position.y = c.mesh.position.y;
+  }
+}
+
+addEventListener("resize", () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  drawMenuArt();
+});
+
+// release-pointer should not end the game; just pause look
+document.addEventListener("pointerlockchange", () => {
+  // nothing required; movement continues, look stops when unlocked
+});
+
+animate();
+</script>
+</body>
+</html>
